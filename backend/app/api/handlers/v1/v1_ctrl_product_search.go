@@ -478,30 +478,38 @@ func (ctrl *V1Controller) HandleProductSearchFromBarcode(conf config.BarcodeAPIC
 
 		var products []repo.BarcodeProduct
 
-		// www.ean-search.org/: not free
-
-		// Example code: dewalt 5035048748428
-
-		ps, err := lookupUPCItemDB(q.EAN)
-		if err != nil {
-			log.Error().Msg("Can not retrieve product from upcitemdb.com: " + err.Error())
-		}
-		products = append(products, ps...)
-
-		if conf.TokenBarcodespider != "" {
-			ps2, err := lookupBarcodespider(conf.TokenBarcodespider, q.EAN)
+		if isValidISDNBarcode(q.EAN) {
+			ps, err := lookupISDN(isdnAPIBaseURL, q.EAN)
 			if err != nil {
-				log.Error().Msg("Can not retrieve product from barcodespider.com: " + err.Error())
+				log.Error().Msg("Can not retrieve product from isdn.jp: " + err.Error())
 			}
-			products = append(products, ps2...)
-		}
+			products = append(products, ps...)
+		} else {
+			// www.ean-search.org/: not free
 
-		for _, source := range openFactsSources {
-			ps3, err := lookupOpenFacts(conf.OpenFoodFactsContact, source, q.EAN)
+			// Example code: dewalt 5035048748428
+
+			ps, err := lookupUPCItemDB(q.EAN)
 			if err != nil {
-				log.Error().Msg("Can not retrieve product from " + source.Name + ": " + err.Error())
+				log.Error().Msg("Can not retrieve product from upcitemdb.com: " + err.Error())
 			}
-			products = append(products, ps3...)
+			products = append(products, ps...)
+
+			if conf.TokenBarcodespider != "" {
+				ps2, err := lookupBarcodespider(conf.TokenBarcodespider, q.EAN)
+				if err != nil {
+					log.Error().Msg("Can not retrieve product from barcodespider.com: " + err.Error())
+				}
+				products = append(products, ps2...)
+			}
+
+			for _, source := range openFactsSources {
+				ps3, err := lookupOpenFacts(conf.OpenFoodFactsContact, source, q.EAN)
+				if err != nil {
+					log.Error().Msg("Can not retrieve product from " + source.Name + ": " + err.Error())
+				}
+				products = append(products, ps3...)
+			}
 		}
 
 		// Retrieve images if possible
