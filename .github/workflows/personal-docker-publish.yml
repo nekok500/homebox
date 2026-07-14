@@ -1,0 +1,76 @@
+name: Personal Docker publish
+
+on:
+  push:
+    branches:
+      - "nekok500/personal/main"
+    paths:
+      - "backend/**"
+      - "frontend/**"
+      - "Dockerfile.hardened"
+      - ".dockerignore"
+      - ".github/workflows/personal-docker-publish.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: personal-docker-publish-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  IMAGE_NAME: ghcr.io/nekok500/homebox
+
+jobs:
+  build-and-push:
+    if: github.ref == 'refs/heads/nekok500/personal/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8
+
+      - name: Prepare image metadata
+        id: details
+        shell: bash
+        run: |
+          echo "build_time=$(date -u +'%Y-%m-%dT%H:%M:%SZ')" >> "$GITHUB_OUTPUT"
+          echo "short_sha=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+
+      - name: Log in to GHCR
+        uses: docker/login-action@184bdaa0721073962dff0199f1fb9940f07167d1
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@e468171a9de216ec08956ac3ada2f0791b6bd435
+
+      - name: Build and push Hardened amd64 image
+        uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83
+        with:
+          context: .
+          file: ./Dockerfile.hardened
+          platforms: linux/amd64
+          push: true
+          pull: true
+          tags: |
+            ${{ env.IMAGE_NAME }}:latest
+            ${{ env.IMAGE_NAME }}:sha-${{ steps.details.outputs.short_sha }}
+          labels: |
+            org.opencontainers.image.created=${{ steps.details.outputs.build_time }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.source=https://github.com/nekok500/homebox
+            org.opencontainers.image.version=sha-${{ steps.details.outputs.short_sha }}
+          build-args: |
+            BUILD_TIME=${{ steps.details.outputs.build_time }}
+            COMMIT=${{ github.sha }}
+            VERSION=sha-${{ steps.details.outputs.short_sha }}
+          cache-from: type=gha,scope=personal-hardened-amd64
+          cache-to: type=gha,scope=personal-hardened-amd64,mode=max
+          provenance: false
+          sbom: false
