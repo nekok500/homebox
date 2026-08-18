@@ -57,6 +57,8 @@
     "@opentelemetry/sdk-trace-web": "^2.10.0",
     "@opentelemetry/semantic-conventions": "^1.43.0",
     "@pinia/nuxt": "^0.11.3",
+    "@revolist/revogrid": "4.26.2",
+    "@revolist/vue3-datagrid": "4.26.2",
     "@tailwindcss/aspect-ratio": "^0.4.2",
     "@tailwindcss/forms": "^0.5.11",
     "@tailwindcss/typography": "^0.5.20",

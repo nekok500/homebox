@@ -741,6 +741,15 @@ export interface DuplicateOptions {
   copyPrefix: string;
 }
 
+export interface EntityBulkEditListResult {
+  fieldDefinitions: EntityFieldDefinition[];
+  items: EntityOut[];
+  page: number;
+  pageSize: number;
+  total: number;
+  totalPrice: number;
+}
+
 export interface EntityCreate {
   /** @maxLength 1000 */
   description: string;
@@ -770,6 +779,12 @@ export interface EntityFieldData {
   name: string;
   numberValue: number;
   textValue: string;
+  timeValue: string;
+  type: string;
+}
+
+export interface EntityFieldDefinition {
+  name: string;
   type: string;
 }
 
@@ -834,11 +849,44 @@ export interface EntityOut {
 }
 
 export interface EntityPatch {
+  archived?: boolean | null;
+  /** @maxLength 1000 */
+  description?: string | null;
   entityTypeId?: string | null;
+  expectedUpdatedAt?: string | null;
+  fields?: EntityFieldData[] | null;
   id: string;
+  insured?: boolean | null;
+  lifetimeWarranty?: boolean | null;
+  /** @maxLength 255 */
+  manufacturer?: string | null;
+  /** @maxLength 255 */
+  modelNumber?: string | null;
+  /**
+   * @minLength 1
+   * @maxLength 255
+   */
+  name?: string | null;
+  /** @maxLength 1000 */
+  notes?: string | null;
   parentId?: string | null;
+  purchaseDate?: string | null;
+  /** @maxLength 255 */
+  purchaseFrom?: string | null;
+  purchasePrice?: number | null;
   quantity?: number | null;
+  /** @maxLength 255 */
+  serialNumber?: string | null;
+  soldDate?: string | null;
+  /** @maxLength 1000 */
+  soldNotes?: string | null;
+  soldPrice?: number | null;
+  /** @maxLength 255 */
+  soldTo?: string | null;
   tagIds?: string[] | null;
+  /** @maxLength 1000 */
+  warrantyDetails?: string | null;
+  warrantyExpires?: string | null;
 }
 
 export interface EntityPath {

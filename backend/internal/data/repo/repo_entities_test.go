@@ -944,3 +944,52 @@ func TestEntityRepository_RejectsNegativeQuantity(t *testing.T) {
 	err = tRepos.Entities.Patch(ctx, tGroup.ID, e.ID, EntityPatch{ID: e.ID, Quantity: &negative})
 	require.ErrorContains(t, err, "must not be negative")
 }
+
+func TestEntityRepository_PatchBulkEditableFieldsAndRejectsStaleWrite(t *testing.T) {
+	ctx := context.Background()
+	itemET := useItemEntityType(t)
+	item := mustCreateEntity(t, "Before", itemET.ID, uuid.Nil)
+
+	name := "After"
+	notes := "bulk edited"
+	price := 1200.5
+	purchased := types.DateFromString("2026-08-16")
+	fields := []EntityFieldData{{
+		Name:      "ccode",
+		Type:      "text",
+		TextValue: "C108",
+	}}
+	err := tRepos.Entities.Patch(ctx, tGroup.ID, item.ID, EntityPatch{
+		ID:                item.ID,
+		ExpectedUpdatedAt: &item.UpdatedAt,
+		Name:              &name,
+		Notes:             &notes,
+		PurchasePrice:     &price,
+		PurchaseDate:      &purchased,
+		Fields:            &fields,
+	})
+	require.NoError(t, err)
+
+	updated, err := tRepos.Entities.GetOne(ctx, item.ID)
+	require.NoError(t, err)
+	assert.Equal(t, name, updated.Name)
+	assert.Equal(t, notes, updated.Notes)
+	assert.Equal(t, price, updated.PurchasePrice)
+	assert.Equal(t, "2026-08-16", updated.PurchaseDate.String())
+	assert.Equal(t, item.Description, updated.Description, "omitted values must be preserved")
+	require.Len(t, updated.Fields, 1)
+	assert.Equal(t, "ccode", updated.Fields[0].Name)
+	assert.Equal(t, "C108", updated.Fields[0].TextValue)
+
+	staleName := "stale overwrite"
+	err = tRepos.Entities.Patch(ctx, tGroup.ID, item.ID, EntityPatch{
+		ID:                item.ID,
+		ExpectedUpdatedAt: &item.UpdatedAt,
+		Name:              &staleName,
+	})
+	require.ErrorIs(t, err, ErrEntityChanged)
+
+	definitions, err := tRepos.Entities.GetAllCustomFieldDefinitions(ctx, tGroup.ID)
+	require.NoError(t, err)
+	assert.Contains(t, definitions, EntityFieldDefinition{Name: "ccode", Type: "text"})
+}

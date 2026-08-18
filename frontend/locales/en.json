@@ -44,6 +44,35 @@
         },
         "uses": "Uses"
     },
+    "bulk_edit": {
+        "columns": "Columns",
+        "detach_confirm": "Changing location will detach {count} item(s) from their parent item. Continue?",
+        "discard": "Discard changes",
+        "discard_confirm": "Discard the unsaved bulk edit changes?",
+        "errors": {
+            "boolean": "Enter true or false.",
+            "conflict": "This item changed elsewhere. Reload the page before editing it again.",
+            "date": "Use YYYY-MM-DD.",
+            "integer": "Enter a whole number.",
+            "location": "Choose one exact location path.",
+            "max_length": "Maximum {max} characters.",
+            "minimum": "Must be {min} or greater.",
+            "number": "Enter a valid number.",
+            "required": "This value is required.",
+            "save": "Could not save this item.",
+            "tags": "Use existing tag names separated with semicolons."
+        },
+        "failed": "{count} item(s) could not be saved.",
+        "grid_hint": "Select cells and drag the bottom-right handle to copy values. Range selection and spreadsheet copy and paste are supported.",
+        "load_failed": "Could not load items for bulk editing.",
+        "no_items": "No items match these filters.",
+        "results": "{total} items",
+        "save": "Save changes ({count})",
+        "saved": "Saved {count} item(s).",
+        "subtitle": "Edit existing items like a spreadsheet. Asset IDs are read-only.",
+        "title": "Bulk editor",
+        "validation_failed": "Fix the highlighted cells before saving."
+    },
     "components": {
         "app": {
             "create_modal": {
@@ -767,6 +796,7 @@
         "total_entries": "Total Entries"
     },
     "menu": {
+        "bulk_edit": "Bulk editor",
         "collection": "Collection",
         "create_item": "Item / Asset",
         "create_location": "Location",

@@ -2,8 +2,10 @@ package repo
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math"
+	"slices"
 	"strings"
 	"time"
 
@@ -85,6 +87,12 @@ type (
 		TextValue    string    `json:"textValue"`
 		NumberValue  int       `json:"numberValue"`
 		BooleanValue bool      `json:"booleanValue"`
+		TimeValue    time.Time `json:"timeValue"`
+	}
+
+	EntityFieldDefinition struct {
+		Name string `json:"name"`
+		Type string `json:"type"`
 	}
 
 	EntityCreate struct {
@@ -141,12 +149,39 @@ type (
 	}
 
 	EntityPatch struct {
-		ID           uuid.UUID   `json:"id"`
-		Quantity     *float64    `json:"quantity,omitempty" extensions:"x-nullable,x-omitempty"`
-		ImportRef    *string     `json:"-"                  extensions:"x-nullable,x-omitempty"`
-		ParentID     uuid.UUID   `json:"parentId"           extensions:"x-nullable,x-omitempty"`
-		EntityTypeID uuid.UUID   `json:"entityTypeId"       extensions:"x-nullable,x-omitempty"`
-		TagIDs       []uuid.UUID `json:"tagIds"             extensions:"x-nullable,x-omitempty"`
+		ID                uuid.UUID  `json:"id"`
+		ExpectedUpdatedAt *time.Time `json:"expectedUpdatedAt,omitempty" extensions:"x-nullable,x-omitempty"`
+
+		Name        *string  `json:"name,omitempty"        validate:"omitempty,min=1,max=255" extensions:"x-nullable,x-omitempty"`
+		Description *string  `json:"description,omitempty" validate:"omitempty,max=1000"      extensions:"x-nullable,x-omitempty"`
+		Quantity    *float64 `json:"quantity,omitempty"    extensions:"x-nullable,x-omitempty"`
+		Insured     *bool    `json:"insured,omitempty"     extensions:"x-nullable,x-omitempty"`
+		Archived    *bool    `json:"archived,omitempty"    extensions:"x-nullable,x-omitempty"`
+
+		ImportRef    *string     `json:"-"            extensions:"x-nullable,x-omitempty"`
+		ParentID     uuid.UUID   `json:"parentId"     extensions:"x-nullable,x-omitempty"`
+		EntityTypeID uuid.UUID   `json:"entityTypeId" extensions:"x-nullable,x-omitempty"`
+		TagIDs       []uuid.UUID `json:"tagIds"       extensions:"x-nullable,x-omitempty"`
+
+		SerialNumber *string `json:"serialNumber,omitempty" validate:"omitempty,max=255" extensions:"x-nullable,x-omitempty"`
+		ModelNumber  *string `json:"modelNumber,omitempty"  validate:"omitempty,max=255" extensions:"x-nullable,x-omitempty"`
+		Manufacturer *string `json:"manufacturer,omitempty" validate:"omitempty,max=255" extensions:"x-nullable,x-omitempty"`
+
+		LifetimeWarranty *bool       `json:"lifetimeWarranty,omitempty" extensions:"x-nullable,x-omitempty"`
+		WarrantyExpires  *types.Date `json:"warrantyExpires,omitempty"  extensions:"x-nullable,x-omitempty"`
+		WarrantyDetails  *string     `json:"warrantyDetails,omitempty"  validate:"omitempty,max=1000" extensions:"x-nullable,x-omitempty"`
+
+		PurchaseDate  *types.Date `json:"purchaseDate,omitempty"  extensions:"x-nullable,x-omitempty"`
+		PurchaseFrom  *string     `json:"purchaseFrom,omitempty"  validate:"omitempty,max=255" extensions:"x-nullable,x-omitempty"`
+		PurchasePrice *float64    `json:"purchasePrice,omitempty" extensions:"x-nullable,x-omitempty"`
+
+		SoldDate  *types.Date `json:"soldDate,omitempty"  extensions:"x-nullable,x-omitempty"`
+		SoldTo    *string     `json:"soldTo,omitempty"    validate:"omitempty,max=255" extensions:"x-nullable,x-omitempty"`
+		SoldPrice *float64    `json:"soldPrice,omitempty" extensions:"x-nullable,x-omitempty"`
+		SoldNotes *string     `json:"soldNotes,omitempty" validate:"omitempty,max=1000" extensions:"x-nullable,x-omitempty"`
+
+		Notes  *string            `json:"notes,omitempty"  validate:"omitempty,max=1000" extensions:"x-nullable,x-omitempty"`
+		Fields *[]EntityFieldData `json:"fields,omitempty" extensions:"x-nullable,x-omitempty"`
 	}
 
 	EntitySummary struct {
@@ -218,6 +253,12 @@ type (
 		// Container-specific fields (for entities whose entity_type.is_location = true)
 		Children   []EntitySummary `json:"children,omitempty"`
 		TotalPrice float64         `json:"totalPrice,omitempty"`
+	}
+
+	EntityBulkEditListResult struct {
+		PaginationResult[EntityOut]
+		TotalPrice       float64                 `json:"totalPrice"`
+		FieldDefinitions []EntityFieldDefinition `json:"fieldDefinitions"`
 	}
 
 	// EntityOutCount is used for container listing with child count.
@@ -298,6 +339,7 @@ func mapEntityFields(fields []*ent.EntityField) []EntityFieldData {
 			TextValue:    f.TextValue,
 			NumberValue:  f.NumberValue,
 			BooleanValue: f.BooleanValue,
+			TimeValue:    f.TimeValue,
 		}
 	})
 }
@@ -1798,16 +1840,96 @@ func patchSyncTags(ctx context.Context, tx *ent.Tx, gid, id uuid.UUID, want []uu
 	return nil
 }
 
+func patchSyncFields(ctx context.Context, tx *ent.Tx, gid, id uuid.UUID, want []EntityFieldData) error {
+	fieldsCtx, fieldsSpan := entityTracer().Start(ctx, "repo.EntityRepository.Patch.fields",
+		trace.WithAttributes(attribute.Int("fields.input.count", len(want))))
+	defer fieldsSpan.End()
+
+	current, err := tx.EntityField.Query().
+		Where(entityfield.HasEntityWith(entity.ID(id), entity.HasGroupWith(group.ID(gid)))).
+		All(fieldsCtx)
+	if err != nil {
+		recordSpanError(fieldsSpan, err)
+		return err
+	}
+
+	currentByID := lo.SliceToMap(current, func(f *ent.EntityField) (uuid.UUID, *ent.EntityField) {
+		return f.ID, f
+	})
+	kept := make(map[uuid.UUID]struct{}, len(want))
+
+	for _, f := range want {
+		if f.ID == uuid.Nil {
+			create := tx.EntityField.Create().
+				SetEntityID(id).
+				SetType(entityfield.Type(f.Type)).
+				SetName(f.Name).
+				SetTextValue(f.TextValue).
+				SetNumberValue(f.NumberValue).
+				SetBooleanValue(f.BooleanValue)
+			if !f.TimeValue.IsZero() {
+				create.SetTimeValue(f.TimeValue)
+			}
+			if _, err := create.Save(fieldsCtx); err != nil {
+				recordSpanError(fieldsSpan, err)
+				return err
+			}
+			continue
+		}
+
+		if _, ok := currentByID[f.ID]; !ok {
+			err := fmt.Errorf("custom field %s does not belong to entity %s", f.ID, id)
+			recordSpanError(fieldsSpan, err)
+			return err
+		}
+
+		update := tx.EntityField.UpdateOneID(f.ID).
+			SetType(entityfield.Type(f.Type)).
+			SetName(f.Name).
+			SetTextValue(f.TextValue).
+			SetNumberValue(f.NumberValue).
+			SetBooleanValue(f.BooleanValue)
+		if !f.TimeValue.IsZero() {
+			update.SetTimeValue(f.TimeValue)
+		}
+		if _, err := update.Save(fieldsCtx); err != nil {
+			recordSpanError(fieldsSpan, err)
+			return err
+		}
+		kept[f.ID] = struct{}{}
+	}
+
+	remove := lo.FilterMap(current, func(f *ent.EntityField, _ int) (uuid.UUID, bool) {
+		_, ok := kept[f.ID]
+		return f.ID, !ok
+	})
+	if len(remove) > 0 {
+		if _, err := tx.EntityField.Delete().Where(entityfield.IDIn(remove...)).Exec(fieldsCtx); err != nil {
+			recordSpanError(fieldsSpan, err)
+			return err
+		}
+	}
+
+	fieldsSpan.SetAttributes(attribute.Int("fields.removed.count", len(remove)))
+	return nil
+}
+
+var ErrEntityChanged = errors.New("entity changed since it was loaded")
+
 func (r *EntityRepository) Patch(ctx context.Context, gid, id uuid.UUID, data EntityPatch) error {
 	ctx, span := entityTracer().Start(ctx, "repo.EntityRepository.Patch",
 		trace.WithAttributes(
 			attribute.String("group.id", gid.String()),
 			attribute.String("entity.id", id.String()),
 			attribute.Bool("patch.import_ref.set", data.ImportRef != nil),
+			attribute.Bool("patch.name.set", data.Name != nil),
+			attribute.Bool("patch.description.set", data.Description != nil),
 			attribute.Bool("patch.quantity.set", data.Quantity != nil),
 			attribute.Bool("patch.parent_id.set", data.ParentID != uuid.Nil),
 			attribute.Bool("patch.entity_type_id.set", data.EntityTypeID != uuid.Nil),
 			attribute.Bool("patch.tag_ids.set", data.TagIDs != nil),
+			attribute.Bool("patch.fields.set", data.Fields != nil),
+			attribute.Bool("patch.expected_updated_at.set", data.ExpectedUpdatedAt != nil),
 		))
 	defer span.End()
 
@@ -1849,9 +1971,18 @@ func (r *EntityRepository) Patch(ctx context.Context, gid, id uuid.UUID, data En
 			entity.ID(id),
 			entity.HasGroupWith(group.ID(gid)),
 		)
+	if data.ExpectedUpdatedAt != nil {
+		q.Where(entity.UpdatedAt(*data.ExpectedUpdatedAt))
+	}
 
 	if data.ImportRef != nil {
 		q.SetImportRef(*data.ImportRef)
+	}
+	if data.Name != nil {
+		q.SetName(*data.Name)
+	}
+	if data.Description != nil {
+		q.SetDescription(*data.Description)
 	}
 
 	if data.Quantity != nil {
@@ -1861,6 +1992,66 @@ func (r *EntityRepository) Patch(ctx context.Context, gid, id uuid.UUID, data En
 		}
 
 		q.SetQuantity(*data.Quantity)
+	}
+	if data.Insured != nil {
+		q.SetInsured(*data.Insured)
+	}
+	if data.Archived != nil {
+		q.SetArchived(*data.Archived)
+	}
+	if data.SerialNumber != nil {
+		q.SetSerialNumber(*data.SerialNumber)
+	}
+	if data.ModelNumber != nil {
+		q.SetModelNumber(*data.ModelNumber)
+	}
+	if data.Manufacturer != nil {
+		q.SetManufacturer(*data.Manufacturer)
+	}
+	if data.LifetimeWarranty != nil {
+		q.SetLifetimeWarranty(*data.LifetimeWarranty)
+	}
+	if data.WarrantyDetails != nil {
+		q.SetWarrantyDetails(*data.WarrantyDetails)
+	}
+	if data.WarrantyExpires != nil {
+		if value := data.WarrantyExpires.Time(); value.IsZero() {
+			q.ClearWarrantyExpires()
+		} else {
+			q.SetWarrantyExpires(value)
+		}
+	}
+	if data.PurchaseDate != nil {
+		if value := data.PurchaseDate.Time(); value.IsZero() {
+			q.ClearPurchaseDate()
+		} else {
+			q.SetPurchaseDate(value)
+		}
+	}
+	if data.PurchaseFrom != nil {
+		q.SetPurchaseFrom(*data.PurchaseFrom)
+	}
+	if data.PurchasePrice != nil {
+		q.SetPurchasePrice(*data.PurchasePrice)
+	}
+	if data.SoldDate != nil {
+		if value := data.SoldDate.Time(); value.IsZero() {
+			q.ClearSoldDate()
+		} else {
+			q.SetSoldDate(value)
+		}
+	}
+	if data.SoldTo != nil {
+		q.SetSoldTo(*data.SoldTo)
+	}
+	if data.SoldPrice != nil {
+		q.SetSoldPrice(*data.SoldPrice)
+	}
+	if data.SoldNotes != nil {
+		q.SetSoldNotes(*data.SoldNotes)
+	}
+	if data.Notes != nil {
+		q.SetNotes(*data.Notes)
 	}
 
 	if data.ParentID != uuid.Nil {
@@ -1872,17 +2063,29 @@ func (r *EntityRepository) Patch(ctx context.Context, gid, id uuid.UUID, data En
 	}
 
 	_, execSpan := entityTracer().Start(ctx, "repo.EntityRepository.Patch.exec")
-	err = q.Exec(ctx)
+	affected, err := q.Save(ctx)
 	if err != nil {
 		recordSpanError(execSpan, err)
 		execSpan.End()
 		recordSpanError(span, err)
 		return err
 	}
+	if affected == 0 {
+		recordSpanError(execSpan, ErrEntityChanged)
+		execSpan.End()
+		recordSpanError(span, ErrEntityChanged)
+		return ErrEntityChanged
+	}
 	execSpan.End()
 
 	if data.TagIDs != nil {
 		if err := patchSyncTags(ctx, tx, gid, id, data.TagIDs); err != nil {
+			recordSpanError(span, err)
+			return err
+		}
+	}
+	if data.Fields != nil {
+		if err := patchSyncFields(ctx, tx, gid, id, *data.Fields); err != nil {
 			recordSpanError(span, err)
 			return err
 		}
@@ -1975,6 +2178,34 @@ func (r *EntityRepository) GetAllCustomFieldNames(ctx context.Context, gid uuid.
 
 	span.SetAttributes(attribute.Int("names.count", len(fieldNames)))
 	return fieldNames, nil
+}
+
+func (r *EntityRepository) GetAllCustomFieldDefinitions(ctx context.Context, gid uuid.UUID) ([]EntityFieldDefinition, error) {
+	ctx, span := entityTracer().Start(ctx, "repo.EntityRepository.GetAllCustomFieldDefinitions",
+		trace.WithAttributes(attribute.String("group.id", gid.String())))
+	defer span.End()
+
+	var fields []EntityFieldDefinition
+	err := r.db.Entity.Query().
+		Where(entity.HasGroupWith(group.ID(gid))).
+		QueryFields().
+		Unique(true).
+		Select(entityfield.FieldName, entityfield.FieldType).
+		Scan(ctx, &fields)
+	if err != nil {
+		wrapped := fmt.Errorf("failed to get custom field definitions: %w", err)
+		recordSpanError(span, wrapped)
+		return nil, wrapped
+	}
+
+	slices.SortFunc(fields, func(a, b EntityFieldDefinition) int {
+		if cmp := strings.Compare(a.Name, b.Name); cmp != 0 {
+			return cmp
+		}
+		return strings.Compare(a.Type, b.Type)
+	})
+	span.SetAttributes(attribute.Int("definitions.count", len(fields)))
+	return fields, nil
 }
 
 // ZeroOutTimeFields sets all date fields to the beginning of the day.

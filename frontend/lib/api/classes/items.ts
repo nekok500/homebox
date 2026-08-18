@@ -1,6 +1,7 @@
 import { BaseAPI, route } from "../base";
 import type {
   EntityCreate,
+  EntityBulkEditListResult,
   EntityListResult,
   EntityOut,
   EntityPatch,
@@ -123,6 +124,10 @@ export class ItemsApi extends BaseAPI {
   async getAll(q: ItemsQuery = {}) {
     const payload = await this.http.get<EntityListResult>({ url: route("/entities", q) });
     return payload;
+  }
+
+  async getBulkEdit(q: ItemsQuery = {}) {
+    return this.http.get<EntityBulkEditListResult>({ url: route("/entities/bulk-edit", q) });
   }
 
   async create(item: EntityCreate) {

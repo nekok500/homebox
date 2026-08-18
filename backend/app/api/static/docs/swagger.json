@@ -324,6 +324,70 @@
                 }
             }
         },
+        "/v1/entities/bulk-edit": {
+            "get": {
+                "security": [
+                    {
+                        "Bearer": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Entities"
+                ],
+                "summary": "Query entities with all fields required by the bulk editor",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "search string",
+                        "name": "q",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "page number",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "items per page",
+                        "name": "pageSize",
+                        "in": "query"
+                    },
+                    {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "collectionFormat": "multi",
+                        "description": "tags Ids",
+                        "name": "tags",
+                        "in": "query"
+                    },
+                    {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "collectionFormat": "multi",
+                        "description": "parent Ids",
+                        "name": "parentIds",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/repo.EntityBulkEditListResult"
+                        }
+                    }
+                }
+            }
+        },
         "/v1/entities/export": {
             "get": {
                 "security": [
@@ -4778,6 +4842,35 @@
                 }
             }
         },
+        "repo.EntityBulkEditListResult": {
+            "type": "object",
+            "properties": {
+                "fieldDefinitions": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/repo.EntityFieldDefinition"
+                    }
+                },
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/repo.EntityOut"
+                    }
+                },
+                "page": {
+                    "type": "integer"
+                },
+                "pageSize": {
+                    "type": "integer"
+                },
+                "total": {
+                    "type": "integer"
+                },
+                "totalPrice": {
+                    "type": "number"
+                }
+            }
+        },
         "repo.EntityCreate": {
             "type": "object",
             "required": [
@@ -4841,6 +4934,20 @@
                     "type": "integer"
                 },
                 "textValue": {
+                    "type": "string"
+                },
+                "timeValue": {
+                    "type": "string"
+                },
+                "type": {
+                    "type": "string"
+                }
+            }
+        },
+        "repo.EntityFieldDefinition": {
+            "type": "object",
+            "properties": {
+                "name": {
                     "type": "string"
                 },
                 "type": {
@@ -5027,16 +5134,91 @@
         "repo.EntityPatch": {
             "type": "object",
             "properties": {
+                "archived": {
+                    "type": "boolean",
+                    "x-nullable": true,
+                    "x-omitempty": true
+                },
+                "description": {
+                    "type": "string",
+                    "maxLength": 1000,
+                    "x-nullable": true,
+                    "x-omitempty": true
+                },
                 "entityTypeId": {
                     "type": "string",
+                    "x-nullable": true,
+                    "x-omitempty": true
+                },
+                "expectedUpdatedAt": {
+                    "type": "string",
+                    "x-nullable": true,
+                    "x-omitempty": true
+                },
+                "fields": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/repo.EntityFieldData"
+                    },
                     "x-nullable": true,
                     "x-omitempty": true
                 },
                 "id": {
                     "type": "string"
                 },
+                "insured": {
+                    "type": "boolean",
+                    "x-nullable": true,
+                    "x-omitempty": true
+                },
+                "lifetimeWarranty": {
+                    "type": "boolean",
+                    "x-nullable": true,
+                    "x-omitempty": true
+                },
+                "manufacturer": {
+                    "type": "string",
+                    "maxLength": 255,
+                    "x-nullable": true,
+                    "x-omitempty": true
+                },
+                "modelNumber": {
+                    "type": "string",
+                    "maxLength": 255,
+                    "x-nullable": true,
+                    "x-omitempty": true
+                },
+                "name": {
+                    "type": "string",
+                    "maxLength": 255,
+                    "minLength": 1,
+                    "x-nullable": true,
+                    "x-omitempty": true
+                },
+                "notes": {
+                    "type": "string",
+                    "maxLength": 1000,
+                    "x-nullable": true,
+                    "x-omitempty": true
+                },
                 "parentId": {
                     "type": "string",
+                    "x-nullable": true,
+                    "x-omitempty": true
+                },
+                "purchaseDate": {
+                    "type": "string",
+                    "x-nullable": true,
+                    "x-omitempty": true
+                },
+                "purchaseFrom": {
+                    "type": "string",
+                    "maxLength": 255,
+                    "x-nullable": true,
+                    "x-omitempty": true
+                },
+                "purchasePrice": {
+                    "type": "number",
                     "x-nullable": true,
                     "x-omitempty": true
                 },
@@ -5045,11 +5227,50 @@
                     "x-nullable": true,
                     "x-omitempty": true
                 },
+                "serialNumber": {
+                    "type": "string",
+                    "maxLength": 255,
+                    "x-nullable": true,
+                    "x-omitempty": true
+                },
+                "soldDate": {
+                    "type": "string",
+                    "x-nullable": true,
+                    "x-omitempty": true
+                },
+                "soldNotes": {
+                    "type": "string",
+                    "maxLength": 1000,
+                    "x-nullable": true,
+                    "x-omitempty": true
+                },
+                "soldPrice": {
+                    "type": "number",
+                    "x-nullable": true,
+                    "x-omitempty": true
+                },
+                "soldTo": {
+                    "type": "string",
+                    "maxLength": 255,
+                    "x-nullable": true,
+                    "x-omitempty": true
+                },
                 "tagIds": {
                     "type": "array",
                     "items": {
                         "type": "string"
                     },
+                    "x-nullable": true,
+                    "x-omitempty": true
+                },
+                "warrantyDetails": {
+                    "type": "string",
+                    "maxLength": 1000,
+                    "x-nullable": true,
+                    "x-omitempty": true
+                },
+                "warrantyExpires": {
+                    "type": "string",
                     "x-nullable": true,
                     "x-omitempty": true
                 }

@@ -47,6 +47,12 @@ importers:
       '@pinia/nuxt':
         specifier: ^0.11.3
         version: 0.11.3(magic-string@1.1.0)(magicast@0.5.4)(oxc-parser@0.133.0)(pinia@3.0.4(typescript@5.9.2)(vue@3.5.20(typescript@5.9.2)))(unplugin@3.3.0(esbuild@0.28.1)(rollup@4.62.4)(vite@7.3.6(@types/node@26.1.2)(jiti@1.21.7)(terser@5.49.0)(yaml@2.9.0)))
+      '@revolist/revogrid':
+        specifier: 4.26.2
+        version: 4.26.2
+      '@revolist/vue3-datagrid':
+        specifier: 4.26.2
+        version: 4.26.2
       '@tailwindcss/aspect-ratio':
         specifier: ^0.4.2
         version: 0.4.2(tailwindcss@3.4.19(yaml@2.9.0))
@@ -2161,6 +2167,12 @@ packages:
 
   '@protobufjs/utf8@1.1.2':
     resolution: {integrity: sha512-b1UQwcEZ4yCnMCD8DAL1VlbvBJE9/IX4FTIp7BG1xYpf29SLazLSrqUkj4w7Y5y7cCVP6E5tcqqcI0xemPkHug==}
+
+  '@revolist/revogrid@4.26.2':
+    resolution: {integrity: sha512-WP0pGC+sClZTfiFmOAr0CZisdiU/yxGGtyyCu/ZR3yxptmbbPRntEvQjHpGsRuzAYZsILkE1EGGlh1iVTZ+ZYQ==}
+
+  '@revolist/vue3-datagrid@4.26.2':
+    resolution: {integrity: sha512-je7h79zQqNnBX5xR2NgcS7YYsdW1glF28ofKvS6oCfA+ltl0Ti5z1KfzE1V1kHkTO+uNXzT8+EihjQ+VfAcrzw==}
 
   '@rolldown/pluginutils@1.0.1':
     resolution: {integrity: sha512-2j9bGt5Jh8hj+vPtgzPtl72j0yRxHAyumoo6TNfAjsLB04UtpSvPbPcDcBMxz7n+9CYB0c1GxQFxYRg2jimqGw==}
@@ -9312,6 +9324,12 @@ snapshots:
   '@protobufjs/pool@1.1.0': {}
 
   '@protobufjs/utf8@1.1.2': {}
+
+  '@revolist/revogrid@4.26.2': {}
+
+  '@revolist/vue3-datagrid@4.26.2':
+    dependencies:
+      '@revolist/revogrid': 4.26.2
 
   '@rolldown/pluginutils@1.0.1': {}
 

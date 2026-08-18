@@ -40,6 +40,35 @@
         },
         "uses": "使用可能回数"
     },
+    "bulk_edit": {
+        "columns": "表示する列",
+        "detach_confirm": "場所を変更すると{count}件のアイテムが親アイテムから外れます。続行しますか？",
+        "discard": "変更を破棄",
+        "discard_confirm": "未保存の一括編集内容を破棄しますか？",
+        "errors": {
+            "boolean": "trueまたはfalseを入力してください。",
+            "conflict": "別の場所で更新されています。再読み込みしてから編集してください。",
+            "date": "YYYY-MM-DD形式で入力してください。",
+            "integer": "整数を入力してください。",
+            "location": "既存の場所を完全なパスで指定してください。",
+            "max_length": "{max}文字以内で入力してください。",
+            "minimum": "{min}以上で入力してください。",
+            "number": "有効な数値を入力してください。",
+            "required": "入力必須です。",
+            "save": "このアイテムを保存できませんでした。",
+            "tags": "既存のタグ名をセミコロンで区切って指定してください。"
+        },
+        "failed": "{count}件を保存できませんでした。",
+        "grid_hint": "セルを選択し、右下のハンドルをドラッグすると値をコピーできます。範囲選択と表計算ソフトからのコピー＆ペーストにも対応しています。",
+        "load_failed": "一括編集用データを取得できませんでした。",
+        "no_items": "条件に一致するアイテムはありません。",
+        "results": "全{total}件",
+        "save": "変更を保存（{count}件）",
+        "saved": "{count}件を保存しました。",
+        "subtitle": "既存アイテムを表計算ソフトのように編集します。Asset IDは変更されません。",
+        "title": "一括編集",
+        "validation_failed": "強調表示されたセルを修正してください。"
+    },
     "components": {
         "app": {
             "create_modal": {
@@ -538,6 +567,7 @@
         "total_entries": "合計項目数"
     },
     "menu": {
+        "bulk_edit": "一括編集",
         "collection": "プロファイル",
         "create_item": "アイテム",
         "create_location": "場所",

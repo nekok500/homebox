@@ -43,6 +43,45 @@ func startEntityCtrlSpan(ctx context.Context, name string, attrs ...attribute.Ke
 	return entityCtrlTracer().Start(ctx, name, trace.WithAttributes(attrs...))
 }
 
+func extractEntityQuery(r *http.Request) repo.EntityQuery {
+	params := r.URL.Query()
+	filterFieldItems := func(raw []string) []repo.FieldQuery {
+		return lo.FilterMap(raw, func(v string, _ int) (repo.FieldQuery, bool) {
+			parts := strings.SplitN(v, "=", 2)
+			if len(parts) != 2 {
+				return repo.FieldQuery{}, false
+			}
+			return repo.FieldQuery{Name: parts[0], Value: parts[1]}, true
+		})
+	}
+
+	v := repo.EntityQuery{
+		Page:             queryIntOrNegativeOne(params.Get("page")),
+		PageSize:         queryIntOrNegativeOne(params.Get("pageSize")),
+		Search:           params.Get("q"),
+		ParentIDs:        queryUUIDList(params, "parentIds"),
+		TagIDs:           queryUUIDList(params, "tags"),
+		NegateTags:       queryBool(params.Get("negateTags")),
+		OnlyWithoutPhoto: queryBool(params.Get("onlyWithoutPhoto")),
+		OnlyWithPhoto:    queryBool(params.Get("onlyWithPhoto")),
+		IncludeArchived:  queryBool(params.Get("includeArchived")),
+		Fields:           filterFieldItems(params["fields"]),
+		OrderBy:          params.Get("orderBy"),
+	}
+	if isLocStr := params.Get("isLocation"); isLocStr != "" {
+		isLoc := queryBool(isLocStr)
+		v.IsLocation = &isLoc
+	}
+	v.FilterChildren = queryBool(params.Get("filterChildren"))
+	if strings.HasPrefix(v.Search, "#") {
+		if aid, ok := repo.ParseAssetID(strings.TrimPrefix(v.Search, "#")); ok {
+			v.Search = ""
+			v.AssetID = aid
+		}
+	}
+	return v
+}
+
 // HandleEntitiesGetAll godoc
 //
 //	@Summary	Query All Entities
@@ -57,59 +96,8 @@ func startEntityCtrlSpan(ctx context.Context, name string, attrs ...attribute.Ke
 //	@Router		/v1/entities [GET]
 //	@Security	Bearer
 func (ctrl *V1Controller) HandleEntitiesGetAll() errchain.HandlerFunc {
-	extractQuery := func(r *http.Request) repo.EntityQuery {
-		params := r.URL.Query()
-
-		filterFieldItems := func(raw []string) []repo.FieldQuery {
-			return lo.FilterMap(raw, func(v string, _ int) (repo.FieldQuery, bool) {
-				parts := strings.SplitN(v, "=", 2)
-				if len(parts) != 2 {
-					return repo.FieldQuery{}, false
-				}
-				return repo.FieldQuery{
-					Name:  parts[0],
-					Value: parts[1],
-				}, true
-			})
-		}
-
-		v := repo.EntityQuery{
-			Page:             queryIntOrNegativeOne(params.Get("page")),
-			PageSize:         queryIntOrNegativeOne(params.Get("pageSize")),
-			Search:           params.Get("q"),
-			ParentIDs:        queryUUIDList(params, "parentIds"),
-			TagIDs:           queryUUIDList(params, "tags"),
-			NegateTags:       queryBool(params.Get("negateTags")),
-			OnlyWithoutPhoto: queryBool(params.Get("onlyWithoutPhoto")),
-			OnlyWithPhoto:    queryBool(params.Get("onlyWithPhoto")),
-			IncludeArchived:  queryBool(params.Get("includeArchived")),
-			Fields:           filterFieldItems(params["fields"]),
-			OrderBy:          params.Get("orderBy"),
-		}
-
-		// Parse isLocation filter: "true" = locations only, "false" = items only, absent = default (items only)
-		if isLocStr := params.Get("isLocation"); isLocStr != "" {
-			isLoc := queryBool(isLocStr)
-			v.IsLocation = &isLoc
-		}
-
-		v.FilterChildren = queryBool(params.Get("filterChildren"))
-
-		if strings.HasPrefix(v.Search, "#") {
-			aidStr := strings.TrimPrefix(v.Search, "#")
-
-			aid, ok := repo.ParseAssetID(aidStr)
-			if ok {
-				v.Search = ""
-				v.AssetID = aid
-			}
-		}
-
-		return v
-	}
-
 	return func(w http.ResponseWriter, r *http.Request) error {
-		query := extractQuery(r)
+		query := extractEntityQuery(r)
 		spanCtx, span := startEntityCtrlSpan(r.Context(), "controller.V1.HandleEntitiesGetAll",
 			attribute.String("query.search", query.Search),
 			attribute.Int("query.page", query.Page),
@@ -167,6 +155,71 @@ func (ctrl *V1Controller) HandleEntitiesGetAll() errchain.HandlerFunc {
 		return server.JSON(w, http.StatusOK, repo.EntityListResult{
 			PaginationResult: items,
 			TotalPrice:       totalPriceFloat,
+		})
+	}
+}
+
+// HandleEntitiesBulkEditGet godoc
+//
+//	@Summary	Query entities with all fields required by the bulk editor
+//	@Tags		Entities
+//	@Produce	json
+//	@Param		q			query		string		false	"search string"
+//	@Param		page		query		int			false	"page number"
+//	@Param		pageSize	query		int			false	"items per page"
+//	@Param		tags		query		[]string	false	"tags Ids"		collectionFormat(multi)
+//	@Param		parentIds	query		[]string	false	"parent Ids"	collectionFormat(multi)
+//	@Success	200			{object}	repo.EntityBulkEditListResult
+//	@Router		/v1/entities/bulk-edit [GET]
+//	@Security	Bearer
+func (ctrl *V1Controller) HandleEntitiesBulkEditGet() errchain.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) error {
+		query := extractEntityQuery(r)
+		spanCtx, span := startEntityCtrlSpan(r.Context(), "controller.V1.HandleEntitiesBulkEditGet",
+			attribute.Int("query.page", query.Page),
+			attribute.Int("query.page_size", query.PageSize),
+			attribute.Int("query.tag_ids.count", len(query.TagIDs)),
+			attribute.Int("query.parent_ids.count", len(query.ParentIDs)))
+		defer span.End()
+
+		ctx := services.NewContext(spanCtx)
+		summaries, err := ctrl.repo.Entities.QueryByGroup(ctx, ctx.GID, query)
+		if err != nil {
+			recordCtrlSpanError(span, err)
+			return validate.NewRequestError(err, http.StatusInternalServerError)
+		}
+
+		items := make([]repo.EntityOut, 0, len(summaries.Items))
+		totalPrice := new(big.Int)
+		for _, summary := range summaries.Items {
+			item, err := ctrl.repo.Entities.GetOneByGroup(ctx, ctx.GID, summary.ID)
+			if err != nil {
+				recordCtrlSpanError(span, err)
+				return validate.NewRequestError(err, http.StatusInternalServerError)
+			}
+			items = append(items, item)
+			if item.SoldDate.Time().IsZero() {
+				totalPrice.Add(totalPrice, big.NewInt(int64(math.Round(item.PurchasePrice*100))))
+			}
+		}
+
+		definitions, err := ctrl.repo.Entities.GetAllCustomFieldDefinitions(ctx, ctx.GID)
+		if err != nil {
+			recordCtrlSpanError(span, err)
+			return validate.NewRequestError(err, http.StatusInternalServerError)
+		}
+
+		totalPriceFloat, _ := new(big.Float).Quo(new(big.Float).SetInt(totalPrice), big.NewFloat(100)).Float64()
+		span.SetAttributes(attribute.Int("response.items.count", len(items)))
+		return server.JSON(w, http.StatusOK, repo.EntityBulkEditListResult{
+			PaginationResult: repo.PaginationResult[repo.EntityOut]{
+				Items:    items,
+				Page:     summaries.Page,
+				PageSize: summaries.PageSize,
+				Total:    summaries.Total,
+			},
+			TotalPrice:       totalPriceFloat,
+			FieldDefinitions: definitions,
 		})
 	}
 }
@@ -341,6 +394,7 @@ func (ctrl *V1Controller) HandleEntityPatch() errchain.HandlerFunc {
 		spanCtx, span := startEntityCtrlSpan(r.Context(), "controller.V1.HandleEntityPatch",
 			attribute.String("entity.id", ID.String()),
 			attribute.Bool("patch.import_ref.set", body.ImportRef != nil),
+			attribute.Bool("patch.name.set", body.Name != nil),
 			attribute.Bool("patch.quantity.set", body.Quantity != nil),
 			attribute.Bool("patch.parent_id.set", body.ParentID != uuid.Nil),
 			attribute.Bool("patch.entity_type_id.set", body.EntityTypeID != uuid.Nil),
@@ -355,6 +409,9 @@ func (ctrl *V1Controller) HandleEntityPatch() errchain.HandlerFunc {
 		err := ctrl.repo.Entities.Patch(auth, auth.GID, ID, body)
 		if err != nil {
 			recordCtrlSpanError(span, err)
+			if errors.Is(err, repo.ErrEntityChanged) {
+				return repo.EntityOut{}, validate.NewRequestError(err, http.StatusConflict)
+			}
 			return repo.EntityOut{}, err
 		}
 

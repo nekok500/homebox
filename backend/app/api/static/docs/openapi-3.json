@@ -341,6 +341,81 @@
                 }
             }
         },
+        "/v1/entities/bulk-edit": {
+            "get": {
+                "security": [
+                    {
+                        "Bearer": []
+                    }
+                ],
+                "tags": [
+                    "Entities"
+                ],
+                "summary": "Query entities with all fields required by the bulk editor",
+                "parameters": [
+                    {
+                        "description": "search string",
+                        "name": "q",
+                        "in": "query",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "description": "page number",
+                        "name": "page",
+                        "in": "query",
+                        "schema": {
+                            "type": "integer"
+                        }
+                    },
+                    {
+                        "description": "items per page",
+                        "name": "pageSize",
+                        "in": "query",
+                        "schema": {
+                            "type": "integer"
+                        }
+                    },
+                    {
+                        "description": "tags Ids",
+                        "name": "tags",
+                        "in": "query",
+                        "explode": true,
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    {
+                        "description": "parent Ids",
+                        "name": "parentIds",
+                        "in": "query",
+                        "explode": true,
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/repo.EntityBulkEditListResult"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/v1/entities/export": {
             "get": {
                 "security": [
@@ -5020,6 +5095,35 @@
                     }
                 }
             },
+            "repo.EntityBulkEditListResult": {
+                "type": "object",
+                "properties": {
+                    "fieldDefinitions": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/repo.EntityFieldDefinition"
+                        }
+                    },
+                    "items": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/repo.EntityOut"
+                        }
+                    },
+                    "page": {
+                        "type": "integer"
+                    },
+                    "pageSize": {
+                        "type": "integer"
+                    },
+                    "total": {
+                        "type": "integer"
+                    },
+                    "totalPrice": {
+                        "type": "number"
+                    }
+                }
+            },
             "repo.EntityCreate": {
                 "type": "object",
                 "required": [
@@ -5083,6 +5187,20 @@
                         "type": "integer"
                     },
                     "textValue": {
+                        "type": "string"
+                    },
+                    "timeValue": {
+                        "type": "string"
+                    },
+                    "type": {
+                        "type": "string"
+                    }
+                }
+            },
+            "repo.EntityFieldDefinition": {
+                "type": "object",
+                "properties": {
+                    "name": {
                         "type": "string"
                     },
                     "type": {
@@ -5269,16 +5387,91 @@
             "repo.EntityPatch": {
                 "type": "object",
                 "properties": {
+                    "archived": {
+                        "type": "boolean",
+                        "x-omitempty": true,
+                        "nullable": true
+                    },
+                    "description": {
+                        "type": "string",
+                        "maxLength": 1000,
+                        "x-omitempty": true,
+                        "nullable": true
+                    },
                     "entityTypeId": {
                         "type": "string",
+                        "x-omitempty": true,
+                        "nullable": true
+                    },
+                    "expectedUpdatedAt": {
+                        "type": "string",
+                        "x-omitempty": true,
+                        "nullable": true
+                    },
+                    "fields": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/repo.EntityFieldData"
+                        },
                         "x-omitempty": true,
                         "nullable": true
                     },
                     "id": {
                         "type": "string"
                     },
+                    "insured": {
+                        "type": "boolean",
+                        "x-omitempty": true,
+                        "nullable": true
+                    },
+                    "lifetimeWarranty": {
+                        "type": "boolean",
+                        "x-omitempty": true,
+                        "nullable": true
+                    },
+                    "manufacturer": {
+                        "type": "string",
+                        "maxLength": 255,
+                        "x-omitempty": true,
+                        "nullable": true
+                    },
+                    "modelNumber": {
+                        "type": "string",
+                        "maxLength": 255,
+                        "x-omitempty": true,
+                        "nullable": true
+                    },
+                    "name": {
+                        "type": "string",
+                        "maxLength": 255,
+                        "minLength": 1,
+                        "x-omitempty": true,
+                        "nullable": true
+                    },
+                    "notes": {
+                        "type": "string",
+                        "maxLength": 1000,
+                        "x-omitempty": true,
+                        "nullable": true
+                    },
                     "parentId": {
                         "type": "string",
+                        "x-omitempty": true,
+                        "nullable": true
+                    },
+                    "purchaseDate": {
+                        "type": "string",
+                        "x-omitempty": true,
+                        "nullable": true
+                    },
+                    "purchaseFrom": {
+                        "type": "string",
+                        "maxLength": 255,
+                        "x-omitempty": true,
+                        "nullable": true
+                    },
+                    "purchasePrice": {
+                        "type": "number",
                         "x-omitempty": true,
                         "nullable": true
                     },
@@ -5287,11 +5480,50 @@
                         "x-omitempty": true,
                         "nullable": true
                     },
+                    "serialNumber": {
+                        "type": "string",
+                        "maxLength": 255,
+                        "x-omitempty": true,
+                        "nullable": true
+                    },
+                    "soldDate": {
+                        "type": "string",
+                        "x-omitempty": true,
+                        "nullable": true
+                    },
+                    "soldNotes": {
+                        "type": "string",
+                        "maxLength": 1000,
+                        "x-omitempty": true,
+                        "nullable": true
+                    },
+                    "soldPrice": {
+                        "type": "number",
+                        "x-omitempty": true,
+                        "nullable": true
+                    },
+                    "soldTo": {
+                        "type": "string",
+                        "maxLength": 255,
+                        "x-omitempty": true,
+                        "nullable": true
+                    },
                     "tagIds": {
                         "type": "array",
                         "items": {
                             "type": "string"
                         },
+                        "x-omitempty": true,
+                        "nullable": true
+                    },
+                    "warrantyDetails": {
+                        "type": "string",
+                        "maxLength": 1000,
+                        "x-omitempty": true,
+                        "nullable": true
+                    },
+                    "warrantyExpires": {
+                        "type": "string",
                         "x-omitempty": true,
                         "nullable": true
                     }

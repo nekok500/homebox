@@ -3,6 +3,7 @@
   import { toast } from "@/components/ui/sonner";
   import MdiPencil from "~icons/mdi/pencil";
   import MdiDelete from "~icons/mdi/delete";
+  import MdiTableEdit from "~icons/mdi/table-edit";
   import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
   import { useDialog } from "@/components/ui/dialog-provider";
   import { Card } from "@/components/ui/card";
@@ -298,6 +299,10 @@
           </div>
           <div class="ml-auto mt-2 flex flex-wrap items-center justify-between gap-3">
             <PageQRCode />
+            <Button variant="outline" @click="navigateTo({ path: '/bulk-edit', query: { tag: tagId } })">
+              <MdiTableEdit />
+              {{ $t("menu.bulk_edit") }}
+            </Button>
             <Button @click="openUpdate">
               <MdiPencil />
               {{ $t("global.edit") }}

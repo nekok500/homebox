@@ -252,6 +252,7 @@
   import MdiPlus from "~icons/mdi/plus";
   import MdiLogout from "~icons/mdi/logout";
   import MdiFileDocumentMultiple from "~icons/mdi/file-document-multiple";
+  import MdiTableEdit from "~icons/mdi/table-edit";
   import MdiChevronRight from "~icons/mdi/chevron-right";
 
   import {
@@ -425,6 +426,13 @@
       active: computed(() => route.path === "/items"),
       name: computed(() => t("menu.search")),
       to: "/items",
+    },
+    {
+      icon: MdiTableEdit,
+      id: 8,
+      active: computed(() => route.path === "/bulk-edit"),
+      name: computed(() => t("menu.bulk_edit")),
+      to: "/bulk-edit",
     },
     {
       icon: MdiFileDocumentMultiple,
