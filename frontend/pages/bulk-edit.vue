@@ -93,11 +93,15 @@
 
   const selectedTags = computed({
     get: () => tagStore.tags.filter(tag => tagIds.value.includes(tag.id)),
-    set: value => (tagIds.value = value.map(tag => tag.id)),
+    set: value => {
+      if (!saving.value) tagIds.value = value.map(tag => tag.id);
+    },
   });
   const selectedLocations = computed({
     get: () => flatLocations.value.filter(location => locationIds.value.includes(location.id)),
-    set: value => (locationIds.value = value.map(location => location.id)),
+    set: value => {
+      if (!saving.value) locationIds.value = value.map(location => location.id);
+    },
   });
 
   const builtInColumns: BulkEditorColumn[] = [
@@ -216,7 +220,7 @@
     visibleColumns.value.map(column => ({
       prop: column.key,
       name: column.customField ? column.label : t(column.label),
-      readonly: column.readonly,
+      readonly: saving.value || column.readonly,
       sortable: true,
       cellCompare: (_prop, left, right) => compareGridValues(left[column.key], right[column.key], column.kind),
       editor: column.kind === "textarea" ? RevoGridMultilineEditor : undefined,
@@ -315,6 +319,7 @@
   const confirmDiscard = () => !hasUnsavedChanges.value || window.confirm(t("bulk_edit.discard_confirm"));
 
   const loadRows = async () => {
+    if (saving.value) return;
     loading.value = true;
     const response = await api.items.getBulkEdit({
       q: query.value,
@@ -339,6 +344,7 @@
   };
 
   const submitFilters = async () => {
+    if (saving.value) return;
     if (!confirmDiscard()) return;
     page.value = 1;
     await syncRoute();
@@ -346,11 +352,17 @@
   };
 
   const setPage = async (next: number) => {
-    if (next === page.value || !confirmDiscard()) return;
+    if (saving.value || next === page.value || !confirmDiscard()) return;
     page.value = next;
     await syncRoute();
     await loadRows();
     window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  const setPageSize = async (value: unknown) => {
+    if (saving.value) return;
+    pageSize.value = Number(value);
+    await submitFilters();
   };
 
   const setCell = (row: EditorRow, column: BulkEditorColumn, value: CellValue) => {
@@ -447,7 +459,7 @@
   };
 
   const save = async () => {
-    if (!dirtyRows.value.length) return;
+    if (saving.value || !dirtyRows.value.length) return;
     const validRows = dirtyRows.value.filter(validateRow);
     if (!validRows.length) {
       toast.error(t("bulk_edit.validation_failed"));
@@ -459,27 +471,32 @@
     });
     if (detaching.length && !window.confirm(t("bulk_edit.detach_confirm", { count: detaching.length }))) return;
 
-    saving.value = true;
+    const changes = validRows.map(row => ({ row, patch: buildPatch(row) }));
     let saved = 0;
     let failed = 0;
-    for (const row of validRows) {
-      const response = await api.items.patch(row.id, buildPatch(row));
-      if (response.error) {
-        row.saveError = response.status === 409 ? t("bulk_edit.errors.conflict") : t("bulk_edit.errors.save");
-        failed++;
-        continue;
+    saving.value = true;
+    try {
+      for (const { row, patch } of changes) {
+        const response = await api.items.patch(row.id, patch);
+        if (response.error) {
+          row.saveError = response.status === 409 ? t("bulk_edit.errors.conflict") : t("bulk_edit.errors.save");
+          failed++;
+          continue;
+        }
+        const index = rows.value.findIndex(candidate => candidate.id === row.id);
+        rows.value[index] = toEditorRow(response.data);
+        saved++;
       }
-      const index = rows.value.findIndex(candidate => candidate.id === row.id);
-      rows.value[index] = toEditorRow(response.data);
-      saved++;
+    } finally {
+      gridSource.value = [...rows.value];
+      saving.value = false;
     }
-    saving.value = false;
-    gridSource.value = [...rows.value];
     if (saved) toast.success(t("bulk_edit.saved", { count: saved }));
     if (failed) toast.error(t("bulk_edit.failed", { count: failed }));
   };
 
   const discardAll = () => {
+    if (saving.value) return;
     for (const row of rows.value) {
       for (const column of allColumns.value) setCell(row, column, row.originalValues[column.key] ?? "");
       row.errors = {};
@@ -500,6 +517,7 @@
   };
 
   const onGridAfterEdit = (event: CustomEvent<AfterEditEvent>) => {
+    if (saving.value) return;
     const detail = event.detail;
     if ("models" in detail) {
       Object.values(detail.data).forEach(model => syncGridModel(model as EditorRow));
@@ -560,6 +578,10 @@
   };
 
   const onGridBeforePasteApply = (event: CustomEvent<BeforePasteApplyDetail>) => {
+    if (saving.value) {
+      event.preventDefault();
+      return;
+    }
     const containsHtmlTable = /<table(?:\s|>)/i.test(event.detail.raw);
     const htmlRows = containsHtmlTable ? parseClipboardHtmlGrid(event.detail.raw) : null;
     event.detail.parsed = htmlRows ?? parseClipboardGrid(event.detail.dataText || event.detail.raw);
@@ -632,6 +654,7 @@
 
 <template>
   <BaseContainer
+    :aria-busy="saving"
     class="flex h-[calc(100dvh-var(--header-height-mobile)-4.5rem)] min-h-0 max-w-none flex-col overflow-hidden sm:h-[calc(100dvh-var(--header-height)-4.5rem)]"
   >
     <div class="mb-3 flex shrink-0 flex-col gap-3">
@@ -656,15 +679,21 @@
         <Input
           v-model="query"
           class="h-10 min-w-64 flex-1"
+          :disabled="saving"
           :placeholder="$t('global.search')"
           @keyup.enter="submitFilters"
         />
-        <SearchFilter v-model="selectedLocations" :label="$t('global.locations')" :options="flatLocations" />
-        <SearchFilter v-model="selectedTags" :label="$t('global.tags')" :options="tagStore.tags" />
+        <SearchFilter
+          v-model="selectedLocations"
+          :disabled="saving"
+          :label="$t('global.locations')"
+          :options="flatLocations"
+        />
+        <SearchFilter v-model="selectedTags" :disabled="saving" :label="$t('global.tags')" :options="tagStore.tags" />
         <Label class="flex h-9 items-center gap-2 rounded-md border px-3 text-sm">
-          <Switch v-model="includeArchived" /> {{ $t("items.include_archive") }}
+          <Switch v-model="includeArchived" :disabled="saving" /> {{ $t("items.include_archive") }}
         </Label>
-        <Select v-model="orderBy">
+        <Select v-model="orderBy" :disabled="saving">
           <SelectTrigger class="w-40"><SelectValue /></SelectTrigger>
           <SelectContent>
             <SelectItem value="name">{{ $t("items.name") }}</SelectItem>
@@ -672,7 +701,7 @@
             <SelectItem value="updatedAt">{{ $t("items.updated_at") }}</SelectItem>
           </SelectContent>
         </Select>
-        <Button @click="submitFilters"><MdiMagnify /> {{ $t("global.search") }}</Button>
+        <Button :disabled="saving" @click="submitFilters"><MdiMagnify /> {{ $t("global.search") }}</Button>
         <Popover>
           <PopoverTrigger as-child
             ><Button variant="outline" size="icon"><MdiTableCog /></Button
@@ -725,6 +754,7 @@
         <Grid
           :source="gridSource"
           :columns="gridColumns"
+          :readonly="saving"
           theme="material"
           :row-headers="true"
           :range="true"
@@ -751,22 +781,14 @@
     <div class="mt-3 flex shrink-0 flex-wrap items-center justify-between gap-3">
       <div class="text-sm text-muted-foreground">{{ $t("bulk_edit.results", { total }) }}</div>
       <div class="flex items-center gap-3">
-        <Select
-          :model-value="String(pageSize)"
-          @update:model-value="
-            value => {
-              pageSize = Number(value);
-              submitFilters();
-            }
-          "
-        >
+        <Select :model-value="String(pageSize)" :disabled="saving" @update:model-value="setPageSize">
           <SelectTrigger class="w-24"><SelectValue /></SelectTrigger>
           <SelectContent>
             <SelectItem value="12">12</SelectItem><SelectItem value="24">24</SelectItem
             ><SelectItem value="48">48</SelectItem><SelectItem value="96">96</SelectItem>
           </SelectContent>
         </Select>
-        <Pagination :items-per-page="pageSize" :total="total" :page="page" @update:page="setPage">
+        <Pagination :items-per-page="pageSize" :total="total" :page="page" :disabled="saving" @update:page="setPage">
           <PaginationList v-slot="{ items }" class="flex items-center gap-1">
             <PaginationFirst /><template v-for="item in items" :key="item.type === 'page' ? item.value : item.type">
               <PaginationListItem v-if="item.type === 'page'" :value="item.value" as-child

@@ -1,14 +1,19 @@
 <template>
   <Popover>
     <PopoverTrigger as-child>
-      <Button size="sm" variant="outline" class="group/filter">
+      <Button size="sm" variant="outline" class="group/filter" :disabled="disabled">
         {{ label }} {{ len }}
         <MdiChevronDown class="transition-transform group-data-[state=open]/filter:rotate-180" />
       </Button>
     </PopoverTrigger>
     <PopoverContent class="z-40 p-0">
       <div class="p-4 shadow-sm">
-        <Input v-model="search" type="text" :placeholder="$t('components.search.filter.search_placeholder')" />
+        <Input
+          v-model="search"
+          type="text"
+          :disabled="disabled"
+          :placeholder="$t('components.search.filter.search_placeholder')"
+        />
       </div>
       <div class="max-h-72 divide-y overflow-y-auto">
         <Label
@@ -20,7 +25,11 @@
             <span>{{ v.name }}</span>
             <span v-if="v.treeString && v.treeString !== v.name" class="ml-auto text-xs">{{ v.treeString }}</span>
           </div>
-          <Checkbox :model-value="true" @update:model-value="_ => (selected = selected.filter(s => s.id !== v.id))" />
+          <Checkbox
+            :model-value="true"
+            :disabled="disabled"
+            @update:model-value="_ => (selected = selected.filter(s => s.id !== v.id))"
+          />
         </Label>
         <hr v-if="selected.length > 0" />
         <Label
@@ -34,7 +43,11 @@
               {{ v.treeString }}
             </div>
           </div>
-          <Checkbox :model-value="false" @update:model-value="_ => (selected = [...selected, v])" />
+          <Checkbox
+            :model-value="false"
+            :disabled="disabled"
+            @update:model-value="_ => (selected = [...selected, v])"
+          />
         </Label>
       </div>
     </PopoverContent>
@@ -50,6 +63,7 @@
   import { Label } from "@/components/ui/label";
 
   type Props = {
+    disabled?: boolean;
     label?: string;
     options: {
       name: string;
@@ -68,6 +82,7 @@
 
   const emit = defineEmits(["update:modelValue"]);
   const props = withDefaults(defineProps<Props>(), {
+    disabled: false,
     label: "",
     modelValue: () => [],
   });
