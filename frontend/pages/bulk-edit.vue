@@ -571,8 +571,10 @@
 </script>
 
 <template>
-  <BaseContainer class="max-w-none">
-    <div class="mb-4 flex flex-col gap-3">
+  <BaseContainer
+    class="flex h-[calc(100dvh-var(--header-height-mobile)-4.5rem)] min-h-0 max-w-none flex-col overflow-hidden sm:h-[calc(100dvh-var(--header-height)-4.5rem)]"
+  >
+    <div class="mb-3 flex shrink-0 flex-col gap-3">
       <div class="flex flex-wrap items-center gap-3">
         <div>
           <h1 class="text-2xl font-semibold">{{ $t("bulk_edit.title") }}</h1>
@@ -643,17 +645,17 @@
       </div>
     </div>
 
-    <div class="rounded-md border bg-card">
-      <div v-if="loading" class="flex min-h-64 items-center justify-center">
+    <div class="min-h-0 flex-1 overflow-hidden rounded-md border bg-card">
+      <div v-if="loading" class="flex h-full items-center justify-center">
         <MdiLoading class="size-8 animate-spin" />
       </div>
-      <div v-else-if="rows.length === 0" class="p-10 text-center text-muted-foreground">
+      <div v-else-if="rows.length === 0" class="flex h-full items-center justify-center p-10 text-muted-foreground">
         {{ $t("bulk_edit.no_items") }}
       </div>
       <div
         v-else
         data-testid="bulk-edit-grid"
-        class="h-[68vh] min-h-[420px] overflow-hidden rounded-md"
+        class="h-full min-h-0 overflow-hidden overscroll-contain rounded-md"
         @columndragend="onColumnDragEnd"
         @wheel.capture="onGridWheel"
       >
@@ -673,14 +675,17 @@
       </div>
     </div>
 
-    <div v-if="rows.some(row => Object.keys(row.errors).length || row.saveError)" class="mt-2 text-sm text-destructive">
+    <div
+      v-if="rows.some(row => Object.keys(row.errors).length || row.saveError)"
+      class="mt-2 max-h-20 shrink-0 overflow-y-auto text-sm text-destructive"
+    >
       <div v-for="row in rows.filter(row => Object.keys(row.errors).length || row.saveError)" :key="row.id">
         {{ row.assetId }} {{ row.name }}:
         {{ row.saveError || Object.values(row.errors).filter(Boolean).join(" / ") }}
       </div>
     </div>
 
-    <div class="mt-4 flex flex-wrap items-center justify-between gap-3">
+    <div class="mt-3 flex shrink-0 flex-wrap items-center justify-between gap-3">
       <div class="text-sm text-muted-foreground">{{ $t("bulk_edit.results", { total }) }}</div>
       <div class="flex items-center gap-3">
         <Select
@@ -735,6 +740,12 @@
     --revo-grid-selection-border: hsl(var(--primary));
     --revo-grid-autofill-handle-bg: hsl(var(--primary));
     --revo-grid-font-family: inherit;
+    min-height: 0;
+  }
+
+  revo-grid revogr-scroll-virtual.vertical,
+  revo-grid revogr-scroll-virtual.horizontal {
+    overscroll-behavior: contain;
   }
 
   revo-grid .bulk-grid-cell-dirty {
