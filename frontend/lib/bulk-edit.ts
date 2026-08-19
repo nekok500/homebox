@@ -16,6 +16,25 @@ export type BulkEditorColumn = {
 export const customFieldKey = (field: EntityFieldDefinition) =>
   `field:${encodeURIComponent(field.name)}:${encodeURIComponent(field.type)}`;
 
+type BulkEditLocation = {
+  name: string;
+  treeString: string;
+};
+
+export function resolveBulkEditLocation<T extends BulkEditLocation>(
+  value: string,
+  locations: readonly T[]
+): T | null | undefined {
+  const normalized = value.trim().replaceAll(" > ", " / ");
+  if (normalized === "") return null;
+
+  const byPath = locations.filter(location => location.treeString.replaceAll(" > ", " / ") === normalized);
+  if (byPath.length === 1) return byPath[0];
+
+  const byName = locations.filter(location => location.name.toLocaleLowerCase() === normalized.toLocaleLowerCase());
+  return byName.length === 1 ? byName[0] : undefined;
+}
+
 export type ClipboardCell = string | number | boolean | null | undefined;
 
 const clipboardCellText = (value: ClipboardCell) => String(value ?? "").replace(/\r\n?/g, "\n");

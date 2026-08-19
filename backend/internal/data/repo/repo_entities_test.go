@@ -861,11 +861,36 @@ func TestEntityRepository_SyncChildLocations_KeepsChildrenAttached(t *testing.T)
 	assertParent(item2.ID, box21.ID, "item2 must stay in box2.1 after move")
 
 	// Same guarantee for the Patch path.
-	err = tRepos.Entities.Patch(ctx, tGroup.ID, box21.ID, EntityPatch{ID: box21.ID, ParentID: box2.ID})
+	patchParentID := box2.ID
+	err = tRepos.Entities.Patch(ctx, tGroup.ID, box21.ID, EntityPatch{ID: box21.ID, ParentID: &patchParentID})
 	require.NoError(t, err)
 	assertParent(box21.ID, box2.ID, "box2.1 must move back under box2 via patch")
 	assertParent(item1.ID, box21.ID, "item1 must stay in box2.1 after patch")
 	assertParent(item2.ID, box21.ID, "item2 must stay in box2.1 after patch")
+}
+
+func TestEntityRepository_PatchCanClearParent(t *testing.T) {
+	ctx := context.Background()
+	containerET := useContainerEntityType(t)
+	itemET := useItemEntityType(t)
+
+	parent := mustCreateEntity(t, "Patch Clear Parent", containerET.ID, uuid.Nil)
+	child := mustCreateEntity(t, "Patch Clear Child", itemET.ID, parent.ID)
+
+	name := "Patch Clear Child Renamed"
+	err := tRepos.Entities.Patch(ctx, tGroup.ID, child.ID, EntityPatch{Name: &name})
+	require.NoError(t, err)
+	unchanged, err := tRepos.Entities.GetOne(ctx, child.ID)
+	require.NoError(t, err)
+	require.NotNil(t, unchanged.Parent, "omitting parentId must preserve the parent")
+	assert.Equal(t, parent.ID, unchanged.Parent.ID)
+
+	noParent := uuid.Nil
+	err = tRepos.Entities.Patch(ctx, tGroup.ID, child.ID, EntityPatch{ParentID: &noParent})
+	require.NoError(t, err)
+	cleared, err := tRepos.Entities.GetOne(ctx, child.ID)
+	require.NoError(t, err)
+	assert.Nil(t, cleared.Parent, "a zero parentId must remove the parent")
 }
 
 // TestEntityRepository_GetOne_DerivedLocation covers the Location field used

@@ -398,7 +398,7 @@ func (ctrl *V1Controller) HandleEntityPatch() errchain.HandlerFunc {
 			attribute.Bool("patch.import_ref.set", body.ImportRef != nil),
 			attribute.Bool("patch.name.set", body.Name != nil),
 			attribute.Bool("patch.quantity.set", body.Quantity != nil),
-			attribute.Bool("patch.parent_id.set", body.ParentID != uuid.Nil),
+			attribute.Bool("patch.parent_id.set", body.ParentID != nil),
 			attribute.Bool("patch.entity_type_id.set", body.EntityTypeID != uuid.Nil),
 			attribute.Bool("patch.tag_ids.set", body.TagIDs != nil),
 		)

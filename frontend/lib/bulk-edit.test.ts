@@ -5,9 +5,28 @@ import {
   isDateOnly,
   parseBoolean,
   parseClipboardGrid,
+  resolveBulkEditLocation,
   serializeClipboardGrid,
   serializeClipboardGridHtml,
 } from "./bulk-edit";
+
+describe("resolveBulkEditLocation", () => {
+  const locations = [
+    { id: "attic", name: "Storage", treeString: "House > Storage" },
+    { id: "garage", name: "Storage", treeString: "Garage > Storage" },
+    { id: "office", name: "Office", treeString: "House > Office" },
+  ];
+
+  it("treats an empty value as an unplaced item", () => {
+    expect(resolveBulkEditLocation("  ", locations)).toBeNull();
+  });
+
+  it("resolves unique paths and names while rejecting ambiguous names", () => {
+    expect(resolveBulkEditLocation("House / Storage", locations)?.id).toBe("attic");
+    expect(resolveBulkEditLocation("office", locations)?.id).toBe("office");
+    expect(resolveBulkEditLocation("Storage", locations)).toBeUndefined();
+  });
+});
 
 describe("combineClipboardGridParts", () => {
   it("combines pinned and regular grid dimensions by row", () => {

@@ -555,7 +555,8 @@ func (svc *EntityService) patchCSVParentRefs(ctx context.Context, gid uuid.UUID,
 			return fmt.Errorf("invalid parent relationship: entity %q cannot be its own parent", row.ImportRef)
 		}
 
-		if err := svc.repo.Entities.Patch(ctx, gid, child.ID, repo.EntityPatch{ParentID: parent.ID}); err != nil {
+		parentID := parent.ID
+		if err := svc.repo.Entities.Patch(ctx, gid, child.ID, repo.EntityPatch{ParentID: &parentID}); err != nil {
 			return err
 		}
 	}

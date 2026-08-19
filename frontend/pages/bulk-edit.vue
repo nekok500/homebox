@@ -34,6 +34,7 @@
     parseBoolean,
     parseClipboardGrid,
     parseClipboardHtmlGrid,
+    resolveBulkEditLocation,
     serializeClipboardGrid,
     serializeClipboardGridHtml,
   } from "~/lib/bulk-edit";
@@ -86,6 +87,7 @@
   const page = ref(asNumber(route.query.page, 1));
   const pageSize = useLocalStorage("homebox/bulk-editor-page-size", asNumber(route.query.pageSize, 48));
   const autoSizeColumn = { preciseSize: true };
+  const NIL_UUID = "00000000-0000-0000-0000-000000000000";
 
   const selectedTags = computed({
     get: () => tagStore.tags.filter(tag => tagIds.value.includes(tag.id)),
@@ -357,11 +359,7 @@
   };
 
   const resolveLocation = (value: string) => {
-    const normalized = value.trim().replaceAll(" > ", " / ");
-    const byPath = flatLocations.value.filter(item => item.treeString.replaceAll(" > ", " / ") === normalized);
-    if (byPath.length === 1) return byPath[0];
-    const byName = flatLocations.value.filter(item => item.name.toLocaleLowerCase() === normalized.toLocaleLowerCase());
-    return byName.length === 1 ? byName[0] : undefined;
+    return resolveBulkEditLocation(value, flatLocations.value);
   };
 
   const resolveTags = (value: string) => {
@@ -389,7 +387,8 @@
     if (column.kind === "date" && !isDateOnly(String(value))) return t("bulk_edit.errors.date");
     if (column.kind === "boolean" && typeof value !== "boolean" && parseBoolean(String(value)) === null)
       return t("bulk_edit.errors.boolean");
-    if (column.kind === "location" && !resolveLocation(String(value))) return t("bulk_edit.errors.location");
+    if (column.kind === "location" && resolveLocation(String(value)) === undefined)
+      return t("bulk_edit.errors.location");
     if (column.kind === "tags" && !resolveTags(String(value))) return t("bulk_edit.errors.tags");
     return "";
   };
@@ -410,7 +409,7 @@
       if (raw === "" || raw === null || raw === undefined) return [];
       const existing = row.fields.find(field => field.name === definition.name && field.type === definition.type);
       const field: EntityFieldData = {
-        id: existing?.id ?? "00000000-0000-0000-0000-000000000000",
+        id: existing?.id ?? NIL_UUID,
         name: definition.name,
         type: definition.type,
         textValue: existing?.textValue ?? "",
@@ -437,7 +436,7 @@
       if (column.customField) {
         customChanged = true;
       } else if (column.key === "locationText") {
-        target.parentId = resolveLocation(String(value))!.id;
+        target.parentId = resolveLocation(String(value))?.id ?? NIL_UUID;
       } else if (column.key === "tagsText") {
         target.tagIds = resolveTags(String(value))!.map(tag => tag.id);
       } else if (column.kind === "number") {

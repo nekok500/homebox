@@ -159,7 +159,7 @@ type (
 		Archived    *bool    `json:"archived,omitempty"    extensions:"x-nullable,x-omitempty"`
 
 		ImportRef    *string     `json:"-"            extensions:"x-nullable,x-omitempty"`
-		ParentID     uuid.UUID   `json:"parentId"     extensions:"x-nullable,x-omitempty"`
+		ParentID     *uuid.UUID  `json:"parentId,omitempty" extensions:"x-nullable,x-omitempty"`
 		EntityTypeID uuid.UUID   `json:"entityTypeId" extensions:"x-nullable,x-omitempty"`
 		TagIDs       []uuid.UUID `json:"tagIds"       extensions:"x-nullable,x-omitempty"`
 
@@ -2100,7 +2100,7 @@ func (r *EntityRepository) Patch(ctx context.Context, gid, id uuid.UUID, data En
 			attribute.Bool("patch.name.set", data.Name != nil),
 			attribute.Bool("patch.description.set", data.Description != nil),
 			attribute.Bool("patch.quantity.set", data.Quantity != nil),
-			attribute.Bool("patch.parent_id.set", data.ParentID != uuid.Nil),
+			attribute.Bool("patch.parent_id.set", data.ParentID != nil),
 			attribute.Bool("patch.entity_type_id.set", data.EntityTypeID != uuid.Nil),
 			attribute.Bool("patch.tag_ids.set", data.TagIDs != nil),
 			attribute.Bool("patch.fields.set", data.Fields != nil),
@@ -2112,9 +2112,11 @@ func (r *EntityRepository) Patch(ctx context.Context, gid, id uuid.UUID, data En
 	// reference checks. data.TagIDs == nil means "leave tags alone"; a non-nil
 	// (possibly empty) slice means "set tags to this exact list", and only the
 	// latter needs validation.
-	if err := assertEntityInGroup(ctx, r.db.Entity, gid, data.ParentID); err != nil {
-		recordSpanError(span, err)
-		return err
+	if data.ParentID != nil {
+		if err := assertEntityInGroup(ctx, r.db.Entity, gid, *data.ParentID); err != nil {
+			recordSpanError(span, err)
+			return err
+		}
 	}
 	if err := assertEntityTypeInGroup(ctx, r.db.EntityType, gid, data.EntityTypeID); err != nil {
 		recordSpanError(span, err)
@@ -2229,8 +2231,12 @@ func (r *EntityRepository) Patch(ctx context.Context, gid, id uuid.UUID, data En
 		q.SetNotes(*data.Notes)
 	}
 
-	if data.ParentID != uuid.Nil {
-		q.SetParentID(data.ParentID)
+	if data.ParentID != nil {
+		if *data.ParentID == uuid.Nil {
+			q.ClearParent()
+		} else {
+			q.SetParentID(*data.ParentID)
+		}
 	}
 
 	if data.EntityTypeID != uuid.Nil {
