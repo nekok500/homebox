@@ -484,7 +484,9 @@ func (r *EntityRepository) getOneTx(ctx context.Context, tx *ent.Tx, where ...pr
 		WithChildren(func(eq *ent.EntityQuery) {
 			eq.WithEntityType()
 		}).
-		WithAttachments().
+		WithAttachments(func(aq *ent.AttachmentQuery) {
+			aq.WithThumbnail()
+		}).
 		Only(ctx)
 	if err != nil {
 		recordSpanError(span, err)
@@ -606,6 +608,179 @@ func (r *EntityRepository) GetOneByGroup(ctx context.Context, gid, id uuid.UUID)
 	out, err := r.getOne(ctx, entity.ID(id), entity.HasGroupWith(group.ID(gid)))
 	recordSpanError(span, err)
 	return out, err
+}
+
+// GetManyByGroup returns entities in the requested order with all relationships
+// required by EntityOut loaded in batches.
+func (r *EntityRepository) GetManyByGroup(ctx context.Context, gid uuid.UUID, ids []uuid.UUID) ([]EntityOut, error) {
+	ctx, span := entityTracer().Start(ctx, "repo.EntityRepository.GetManyByGroup",
+		trace.WithAttributes(
+			attribute.String("group.id", gid.String()),
+			attribute.Int("entity.ids.count", len(ids)),
+		))
+	defer span.End()
+
+	if len(ids) == 0 {
+		return []EntityOut{}, nil
+	}
+
+	entities, err := r.db.Entity.Query().
+		Where(
+			entity.IDIn(ids...),
+			entity.HasGroupWith(group.ID(gid)),
+		).
+		WithFields().
+		WithTag().
+		WithParent(func(eq *ent.EntityQuery) {
+			eq.WithEntityType()
+		}).
+		WithEntityType().
+		WithChildren(func(eq *ent.EntityQuery) {
+			eq.WithEntityType()
+		}).
+		WithAttachments(func(aq *ent.AttachmentQuery) {
+			aq.WithThumbnail()
+		}).
+		All(ctx)
+	if err != nil {
+		recordSpanError(span, err)
+		return nil, err
+	}
+	if len(entities) != len(ids) {
+		err := fmt.Errorf("failed to get entities: requested %d, found %d", len(ids), len(entities))
+		recordSpanError(span, err)
+		return nil, err
+	}
+
+	locations, err := r.nearestLocationAncestors(ctx, gid, ids)
+	if err != nil {
+		recordSpanError(span, err)
+		return nil, err
+	}
+
+	entitiesByID := lo.SliceToMap(entities, func(e *ent.Entity) (uuid.UUID, *ent.Entity) {
+		return e.ID, e
+	})
+	result := make([]EntityOut, 0, len(ids))
+	for _, id := range ids {
+		out := mapEntityOut(entitiesByID[id])
+		out.Location = locations[id]
+		result = append(result, out)
+	}
+
+	span.SetAttributes(attribute.Int("entities.count", len(result)))
+	return result, nil
+}
+
+// nearestLocationAncestors resolves the nearest location for every requested
+// entity with a single recursive query, then loads those location summaries in
+// a batch. This avoids walking the parent chain once per entity.
+func (r *EntityRepository) nearestLocationAncestors(
+	ctx context.Context,
+	gid uuid.UUID,
+	ids []uuid.UUID,
+) (map[uuid.UUID]*EntitySummary, error) {
+	result := make(map[uuid.UUID]*EntitySummary)
+	if len(ids) == 0 {
+		return result, nil
+	}
+
+	placeholders := make([]string, len(ids))
+	args := make([]any, 0, len(ids)+1)
+	args = append(args, gid)
+	for i, id := range ids {
+		placeholders[i] = fmt.Sprintf("$%d", i+2)
+		args = append(args, id)
+	}
+
+	query := fmt.Sprintf(`
+		WITH RECURSIVE ancestor_path(origin_id, id, parent_id, depth) AS (
+			SELECT child.id, parent.id, parent.entity_children, 0
+			FROM entities child
+			JOIN entities parent ON parent.id = child.entity_children
+			WHERE child.group_entities = $1
+				AND parent.group_entities = $1
+				AND child.id IN (%s)
+
+			UNION ALL
+
+			SELECT path.origin_id, parent.id, parent.entity_children, path.depth + 1
+			FROM ancestor_path path
+			JOIN entities parent ON parent.id = path.parent_id
+			WHERE parent.group_entities = $1
+				AND path.depth + 1 < %d
+		), ranked_locations AS (
+			SELECT path.origin_id, path.id,
+				ROW_NUMBER() OVER (PARTITION BY path.origin_id ORDER BY path.depth) AS location_rank
+			FROM ancestor_path path
+			JOIN entities ancestor ON ancestor.id = path.id
+			JOIN entity_types entity_type ON entity_type.id = ancestor.entity_type_entities
+			WHERE entity_type.is_location = true
+		)
+		SELECT origin_id, id
+		FROM ranked_locations
+		WHERE location_rank = 1
+	`, strings.Join(placeholders, ","), maxAncestorDepth)
+
+	rows, err := r.db.Sql().QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	locationIDsByEntityID := make(map[uuid.UUID]uuid.UUID)
+	locationIDs := make([]uuid.UUID, 0)
+	seenLocationIDs := make(map[uuid.UUID]struct{})
+	for rows.Next() {
+		var entityID uuid.UUID
+		var locationID uuid.UUID
+		if err := rows.Scan(&entityID, &locationID); err != nil {
+			return nil, err
+		}
+		locationIDsByEntityID[entityID] = locationID
+		if _, seen := seenLocationIDs[locationID]; !seen {
+			seenLocationIDs[locationID] = struct{}{}
+			locationIDs = append(locationIDs, locationID)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if len(locationIDs) == 0 {
+		return result, nil
+	}
+
+	locationEntities, err := r.db.Entity.Query().
+		Where(
+			entity.IDIn(locationIDs...),
+			entity.HasGroupWith(group.ID(gid)),
+		).
+		WithTag().
+		WithParent(func(eq *ent.EntityQuery) {
+			eq.WithEntityType()
+		}).
+		WithEntityType().
+		WithAttachments(func(aq *ent.AttachmentQuery) {
+			aq.WithThumbnail()
+		}).
+		All(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	locationSummaries := lo.SliceToMap(locationEntities, func(e *ent.Entity) (uuid.UUID, EntitySummary) {
+		return e.ID, mapEntitySummary(e)
+	})
+	for entityID, locationID := range locationIDsByEntityID {
+		location, ok := locationSummaries[locationID]
+		if !ok {
+			return nil, fmt.Errorf("failed to get location %s for entity %s", locationID, entityID)
+		}
+		locationCopy := location
+		result[entityID] = &locationCopy
+	}
+
+	return result, nil
 }
 
 func entityQuerySpanAttrs(gid uuid.UUID, q EntityQuery) []attribute.KeyValue {

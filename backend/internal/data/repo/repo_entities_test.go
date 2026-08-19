@@ -898,6 +898,34 @@ func TestEntityRepository_GetOne_DerivedLocation(t *testing.T) {
 	assert.Nil(t, out.Location, "top-level location has no derived location")
 }
 
+func TestEntityRepository_GetManyByGroup(t *testing.T) {
+	ctx := context.Background()
+	containerET := useContainerEntityType(t)
+	itemET := useItemEntityType(t)
+
+	loc := mustCreateEntity(t, "Bulk Attic", containerET.ID, uuid.Nil)
+	box := mustCreateEntity(t, "Bulk Box", itemET.ID, loc.ID)
+	nested := mustCreateEntity(t, "Bulk Nested", itemET.ID, box.ID)
+	topLevel := mustCreateEntity(t, "Bulk Top Level", itemET.ID, uuid.Nil)
+
+	items, err := tRepos.Entities.GetManyByGroup(ctx, tGroup.ID, []uuid.UUID{topLevel.ID, nested.ID, box.ID})
+	require.NoError(t, err)
+	require.Len(t, items, 3)
+
+	assert.Equal(t, topLevel.ID, items[0].ID, "requested order must be preserved")
+	assert.Nil(t, items[0].Location)
+
+	assert.Equal(t, nested.ID, items[1].ID)
+	require.NotNil(t, items[1].Location)
+	assert.Equal(t, loc.ID, items[1].Location.ID, "nested items must resolve their nearest location")
+	require.NotNil(t, items[1].Parent)
+	assert.Equal(t, box.ID, items[1].Parent.ID)
+
+	assert.Equal(t, box.ID, items[2].ID)
+	require.NotNil(t, items[2].Location)
+	assert.Equal(t, loc.ID, items[2].Location.ID)
+}
+
 // TestEntityRepository_Create_WithManufacturerModel guards #1578: the barcode
 // import flow creates items with manufacturer/model in the create payload.
 func TestEntityRepository_Create_WithManufacturerModel(t *testing.T) {

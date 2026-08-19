@@ -189,15 +189,17 @@ func (ctrl *V1Controller) HandleEntitiesBulkEditGet() errchain.HandlerFunc {
 			return validate.NewRequestError(err, http.StatusInternalServerError)
 		}
 
-		items := make([]repo.EntityOut, 0, len(summaries.Items))
+		ids := lo.Map(summaries.Items, func(item repo.EntitySummary, _ int) uuid.UUID {
+			return item.ID
+		})
+		items, err := ctrl.repo.Entities.GetManyByGroup(ctx, ctx.GID, ids)
+		if err != nil {
+			recordCtrlSpanError(span, err)
+			return validate.NewRequestError(err, http.StatusInternalServerError)
+		}
+
 		totalPrice := new(big.Int)
-		for _, summary := range summaries.Items {
-			item, err := ctrl.repo.Entities.GetOneByGroup(ctx, ctx.GID, summary.ID)
-			if err != nil {
-				recordCtrlSpanError(span, err)
-				return validate.NewRequestError(err, http.StatusInternalServerError)
-			}
-			items = append(items, item)
+		for _, item := range items {
 			if item.SoldDate.Time().IsZero() {
 				totalPrice.Add(totalPrice, big.NewInt(int64(math.Round(item.PurchasePrice*100))))
 			}

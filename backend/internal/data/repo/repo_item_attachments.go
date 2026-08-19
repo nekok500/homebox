@@ -109,6 +109,11 @@ func isExternalLink(mimeType string) bool {
 }
 
 func ToItemAttachment(attachment *ent.Attachment) ItemAttachment {
+	thumbnail, err := attachment.Edges.ThumbnailOrErr()
+	if ent.IsNotLoaded(err) {
+		thumbnail = attachment.QueryThumbnail().FirstX(context.Background())
+	}
+
 	return ItemAttachment{
 		ID:        attachment.ID,
 		CreatedAt: attachment.CreatedAt,
@@ -118,7 +123,7 @@ func ToItemAttachment(attachment *ent.Attachment) ItemAttachment {
 		Path:      attachment.Path,
 		Title:     attachment.Title,
 		MimeType:  attachment.MimeType,
-		Thumbnail: attachment.QueryThumbnail().FirstX(context.Background()),
+		Thumbnail: thumbnail,
 	}
 }
 
