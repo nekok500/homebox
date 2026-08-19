@@ -1,7 +1,7 @@
 <script setup lang="ts">
   import { useI18n } from "vue-i18n";
   import Grid from "@revolist/vue3-datagrid";
-  import type { AfterEditEvent, ColumnRegular } from "@revolist/revogrid";
+  import type { AfterEditEvent, ColumnDragEventData, ColumnRegular } from "@revolist/revogrid";
   import { toast } from "@/components/ui/sonner";
   import MdiContentSave from "~icons/mdi/content-save";
   import MdiLoading from "~icons/mdi/loading";
@@ -34,7 +34,7 @@
 
   definePageMeta({ middleware: ["auth"] });
 
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   useHead({ title: `HomeBox | ${t("bulk_edit.title")}` });
 
   type CellValue = string | number | boolean;
@@ -76,6 +76,7 @@
   const orderBy = ref(asString(route.query.orderBy, "name"));
   const page = ref(asNumber(route.query.page, 1));
   const pageSize = useLocalStorage("homebox/bulk-editor-page-size", asNumber(route.query.pageSize, 48));
+  const autoSizeColumn = { preciseSize: true };
 
   const selectedTags = computed({
     get: () => tagStore.tags.filter(tag => tagIds.value.includes(tag.id)),
@@ -151,23 +152,66 @@
       .filter((column): column is BulkEditorColumn => !!column && visibleKeys.value.includes(column.key))
   );
 
+  const preferredColumnWidths = ref<Record<string, number>>({});
+  const measuredTextWidth = (value: unknown) =>
+    Math.max(
+      ...String(value ?? "")
+        .split("\n")
+        .map(line =>
+          Array.from(line).reduce((width, character) => {
+            const codePoint = character.codePointAt(0) ?? 0;
+            if (character === " ") return width + 4;
+            return width + (codePoint > 0xff ? 14 : 7.5);
+          }, 48)
+        )
+    );
+  const columnWidthLimits = (column: BulkEditorColumn): [number, number] => {
+    if (column.key === "assetId") return [100, 140];
+    if (column.kind === "number") return [110, 160];
+    if (column.kind === "date") return [130, 180];
+    if (column.kind === "boolean") return [110, 170];
+    if (column.kind === "textarea") return [180, 320];
+    if (column.kind === "location" || column.kind === "tags") return [160, 300];
+    return [120, 360];
+  };
+  const refreshPreferredColumnWidths = () => {
+    preferredColumnWidths.value = Object.fromEntries(
+      allColumns.value.map(column => {
+        const label = column.customField ? column.label : t(column.label);
+        const contentWidth = rows.value.reduce(
+          (width, row) => Math.max(width, measuredTextWidth(row[column.key])),
+          measuredTextWidth(label)
+        );
+        const [minimum, maximum] = columnWidthLimits(column);
+        return [column.key, Math.min(maximum, Math.max(minimum, Math.ceil(contentWidth)))];
+      })
+    );
+  };
+
+  const textCollator = computed(() => new Intl.Collator(locale.value, { numeric: true, sensitivity: "base" }));
+  const compareGridValues = (left: unknown, right: unknown, kind: BulkEditorColumn["kind"]) => {
+    const leftEmpty = left === null || left === undefined || String(left).trim() === "";
+    const rightEmpty = right === null || right === undefined || String(right).trim() === "";
+    if (leftEmpty || rightEmpty) return leftEmpty === rightEmpty ? 0 : leftEmpty ? 1 : -1;
+
+    if (kind === "number") return Number(left) - Number(right);
+    if (kind === "boolean") return Number(parseBoolean(String(left))) - Number(parseBoolean(String(right)));
+    return textCollator.value.compare(String(left), String(right));
+  };
+
   const gridColumns = computed<ColumnRegular[]>(() =>
     visibleColumns.value.map(column => ({
       prop: column.key,
       name: column.customField ? column.label : t(column.label),
       readonly: column.readonly,
+      sortable: true,
+      cellCompare: (_prop, left, right) => compareGridValues(left[column.key], right[column.key], column.kind),
       editor: column.kind === "textarea" ? RevoGridMultilineEditor : undefined,
+      autoSize: true,
+      minSize: column.key === "assetId" ? 100 : 90,
+      maxSize: columnWidthLimits(column)[1],
       pin: column.key === "assetId" ? "colPinStart" : undefined,
-      size:
-        column.key === "assetId"
-          ? 120
-          : column.key === "name"
-            ? 240
-            : column.kind === "textarea"
-              ? 280
-              : column.kind === "location" || column.kind === "tags"
-                ? 220
-                : 170,
+      size: preferredColumnWidths.value[column.key] ?? columnWidthLimits(column)[0],
       cellProperties: ({ model }) => {
         const row = model as EditorRow;
         const classes = [];
@@ -276,6 +320,7 @@
     fieldDefinitions.value = response.data.fieldDefinitions;
     reconcileColumnPreferences();
     rows.value = response.data.items.map(toEditorRow);
+    refreshPreferredColumnWidths();
     gridSource.value = rows.value;
     total.value = response.data.total;
   };
@@ -460,6 +505,18 @@
     syncGridModel(detail.model as EditorRow, String(detail.prop));
   };
 
+  const onColumnDragEnd = (event: CustomEvent<ColumnDragEventData>) => {
+    if (event.detail.type !== "rgCol" || event.detail.columns.length === 0) return;
+
+    const reorderedKeys = event.detail.columns.map(column => String(column.prop));
+    const currentKeys = gridColumns.value.filter(column => !column.pin).map(column => String(column.prop));
+    if (reorderedKeys.every((key, index) => key === currentKeys[index])) return;
+
+    const reorderedSet = new Set(reorderedKeys);
+    let reorderedIndex = 0;
+    columnOrder.value = columnOrder.value.map(key => (reorderedSet.has(key) ? reorderedKeys[reorderedIndex++]! : key));
+  };
+
   const onGridWheel = (event: WheelEvent) => {
     if (!event.shiftKey || event.deltaY === 0) return;
 
@@ -499,6 +556,7 @@
     event.preventDefault();
     event.returnValue = "";
   };
+  watch(locale, refreshPreferredColumnWidths);
   onBeforeRouteLeave(() => confirmDiscard());
   onMounted(async () => {
     window.addEventListener("beforeunload", beforeUnload);
@@ -596,6 +654,7 @@
         v-else
         data-testid="bulk-edit-grid"
         class="h-[68vh] min-h-[420px] overflow-hidden rounded-md"
+        @columndragend="onColumnDragEnd"
         @wheel.capture="onGridWheel"
       >
         <Grid
@@ -605,6 +664,8 @@
           :row-headers="true"
           :range="true"
           :resize="true"
+          :can-move-columns="true"
+          :auto-size-column="autoSizeColumn"
           :use-clipboard="{ rangeFill: true }"
           :apply-on-close="true"
           @afteredit="onGridAfterEdit"
