@@ -30,11 +30,13 @@
   import {
     combineClipboardGridParts,
     customFieldKey,
+    formatBulkEditTag,
     isDateOnly,
     parseBoolean,
     parseClipboardGrid,
     parseClipboardHtmlGrid,
     resolveBulkEditLocation,
+    resolveBulkEditTagIds,
     serializeClipboardGrid,
     serializeClipboardGridHtml,
   } from "~/lib/bulk-edit";
@@ -279,7 +281,7 @@
       soldDate: String(item.soldDate ?? ""),
       warrantyExpires: String(item.warrantyExpires ?? ""),
       locationText: locationPath(item.location?.id),
-      tagsText: item.tags.map(tag => tag.name).join("; "),
+      tagsText: item.tags.map(tag => formatBulkEditTag(tag, tagStore.tags)).join("; "),
       customValues,
       originalValues: {},
       errors: {},
@@ -363,14 +365,7 @@
   };
 
   const resolveTags = (value: string) => {
-    const names = value
-      .split(";")
-      .map(name => name.trim())
-      .filter(Boolean);
-    const result = names.map(name =>
-      tagStore.tags.filter(tag => tag.name.toLocaleLowerCase() === name.toLocaleLowerCase())
-    );
-    return result.every(matches => matches.length === 1) ? result.map(matches => matches[0]!) : undefined;
+    return resolveBulkEditTagIds(value, tagStore.tags);
   };
 
   const validateCell = (row: EditorRow, column: BulkEditorColumn): string => {
@@ -438,7 +433,7 @@
       } else if (column.key === "locationText") {
         target.parentId = resolveLocation(String(value))?.id ?? NIL_UUID;
       } else if (column.key === "tagsText") {
-        target.tagIds = resolveTags(String(value))!.map(tag => tag.id);
+        target.tagIds = resolveTags(String(value))!;
       } else if (column.kind === "number") {
         target[column.key] = Number(value);
       } else if (column.kind === "boolean") {

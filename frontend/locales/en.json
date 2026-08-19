@@ -60,7 +60,7 @@
             "number": "Enter a valid number.",
             "required": "This value is required.",
             "save": "Could not save this item.",
-            "tags": "Use existing tag names separated with semicolons."
+            "tags": "Use existing tag names or hierarchy paths separated with semicolons."
         },
         "failed": "{count} item(s) could not be saved.",
         "grid_hint": "Click a column header to sort or drag it to reorder columns. Column widths fit their contents; double-click a column divider to refit. Select cells and drag the bottom-right handle to copy values. Range selection and copy and paste with Excel or LibreOffice are supported.",

@@ -2,13 +2,53 @@ import { describe, expect, it } from "vitest";
 
 import {
   combineClipboardGridParts,
+  formatBulkEditTag,
   isDateOnly,
   parseBoolean,
   parseClipboardGrid,
   resolveBulkEditLocation,
+  resolveBulkEditTagIds,
   serializeClipboardGrid,
   serializeClipboardGridHtml,
 } from "./bulk-edit";
+
+describe("bulk edit tags", () => {
+  const tags = [
+    { id: "11111111-1111-1111-1111-111111111111", name: "Home" },
+    { id: "22222222-2222-2222-2222-222222222222", name: "Office" },
+    {
+      id: "33333333-3333-3333-3333-333333333333",
+      name: "Storage",
+      parentId: "11111111-1111-1111-1111-111111111111",
+    },
+    {
+      id: "44444444-4444-4444-4444-444444444444",
+      name: "Storage",
+      parentId: "22222222-2222-2222-2222-222222222222",
+    },
+    { id: "55555555-5555-5555-5555-555555555555", name: "Unique" },
+  ];
+
+  it("formats and resolves equal names by their hierarchy path", () => {
+    expect(formatBulkEditTag(tags[2]!, tags)).toBe("Home / Storage");
+    expect(formatBulkEditTag(tags[3]!, tags)).toBe("Office / Storage");
+    expect(resolveBulkEditTagIds("Home / Storage; Office / Storage", tags)).toEqual([tags[2]!.id, tags[3]!.id]);
+  });
+
+  it("keeps unique leaf names as a backwards-compatible input", () => {
+    expect(resolveBulkEditTagIds("unique", tags)).toEqual([tags[4]!.id]);
+    expect(resolveBulkEditTagIds("Storage", tags)).toBeUndefined();
+  });
+
+  it("adds an ID when even the complete path is duplicated", () => {
+    const duplicate = { ...tags[2]!, id: "66666666-6666-6666-6666-666666666666" };
+    const duplicates = [...tags, duplicate];
+    const formatted = formatBulkEditTag(tags[2]!, duplicates);
+
+    expect(formatted).toBe(`Home / Storage [id:${tags[2]!.id}]`);
+    expect(resolveBulkEditTagIds(formatted, duplicates)).toEqual([tags[2]!.id]);
+  });
+});
 
 describe("resolveBulkEditLocation", () => {
   const locations = [

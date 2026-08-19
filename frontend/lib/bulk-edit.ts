@@ -35,6 +35,81 @@ export function resolveBulkEditLocation<T extends BulkEditLocation>(
   return byName.length === 1 ? byName[0] : undefined;
 }
 
+export type BulkEditTag = {
+  id: string;
+  name: string;
+  parentId?: string | null;
+};
+
+const normalizeTagReference = (value: string) => value.trim().replaceAll(" > ", " / ").toLocaleLowerCase();
+
+const bulkEditTagPath = (tag: BulkEditTag, tags: readonly BulkEditTag[]) => {
+  const tagsById = new Map(tags.map(candidate => [candidate.id, candidate]));
+  const names = [tag.name];
+  const visited = new Set([tag.id]);
+  let parentId = tag.parentId;
+
+  while (parentId && !visited.has(parentId)) {
+    visited.add(parentId);
+    const parent = tagsById.get(parentId);
+    if (!parent) break;
+    names.unshift(parent.name);
+    parentId = parent.parentId;
+  }
+
+  return names.join(" / ");
+};
+
+export function formatBulkEditTag(tag: BulkEditTag, tags: readonly BulkEditTag[]): string {
+  const storedTag = tags.find(candidate => candidate.id === tag.id);
+  const path = bulkEditTagPath(storedTag ?? tag, tags);
+  const matchingPaths = tags.filter(
+    candidate => normalizeTagReference(bulkEditTagPath(candidate, tags)) === normalizeTagReference(path)
+  );
+
+  return !storedTag || matchingPaths.length !== 1 ? `${path} [id:${tag.id}]` : path;
+}
+
+const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export function resolveBulkEditTagIds(value: string, tags: readonly BulkEditTag[]): string[] | undefined {
+  const references = value
+    .split(";")
+    .map(reference => reference.trim())
+    .filter(Boolean);
+  const resolved: string[] = [];
+
+  for (const reference of references) {
+    const explicitId = reference.match(/\[id:([^\]]+)]\s*$/i)?.[1]?.trim();
+    const knownByExplicitId = explicitId
+      ? tags.find(tag => tag.id.toLocaleLowerCase() === explicitId.toLocaleLowerCase())
+      : undefined;
+    let id = knownByExplicitId?.id;
+    if (!id && explicitId && uuidPattern.test(explicitId)) id = explicitId;
+
+    if (!id) {
+      const knownByRawId = tags.find(tag => tag.id.toLocaleLowerCase() === reference.toLocaleLowerCase());
+      if (knownByRawId) id = knownByRawId.id;
+    }
+
+    if (!id) {
+      const normalized = normalizeTagReference(reference);
+      const byPath = tags.filter(tag => normalizeTagReference(bulkEditTagPath(tag, tags)) === normalized);
+      if (byPath.length === 1) id = byPath[0]!.id;
+    }
+
+    if (!id) {
+      const byName = tags.filter(tag => tag.name.toLocaleLowerCase() === reference.toLocaleLowerCase());
+      if (byName.length === 1) id = byName[0]!.id;
+    }
+
+    if (!id) return undefined;
+    if (!resolved.includes(id)) resolved.push(id);
+  }
+
+  return resolved;
+}
+
 export type ClipboardCell = string | number | boolean | null | undefined;
 
 const clipboardCellText = (value: ClipboardCell) => String(value ?? "").replace(/\r\n?/g, "\n");
