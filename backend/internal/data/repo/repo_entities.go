@@ -2185,7 +2185,7 @@ func (r *EntityRepository) GetAllCustomFieldDefinitions(ctx context.Context, gid
 		trace.WithAttributes(attribute.String("group.id", gid.String())))
 	defer span.End()
 
-	var fields []EntityFieldDefinition
+	fields := make([]EntityFieldDefinition, 0)
 	err := r.db.Entity.Query().
 		Where(entity.HasGroupWith(group.ID(gid))).
 		QueryFields().

@@ -993,3 +993,17 @@ func TestEntityRepository_PatchBulkEditableFieldsAndRejectsStaleWrite(t *testing
 	require.NoError(t, err)
 	assert.Contains(t, definitions, EntityFieldDefinition{Name: "ccode", Type: "text"})
 }
+
+func TestEntityRepository_GetAllCustomFieldDefinitionsReturnsEmptySlice(t *testing.T) {
+	ctx := context.Background()
+	testGroup, err := tRepos.Groups.GroupCreate(ctx, "empty-field-definitions-"+uuid.NewString(), uuid.Nil)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		require.NoError(t, tRepos.Groups.GroupDelete(ctx, testGroup.ID))
+	})
+
+	definitions, err := tRepos.Entities.GetAllCustomFieldDefinitions(ctx, testGroup.ID)
+	require.NoError(t, err)
+	assert.NotNil(t, definitions)
+	assert.Empty(t, definitions)
+}
