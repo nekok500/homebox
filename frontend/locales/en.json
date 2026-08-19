@@ -63,7 +63,7 @@
             "tags": "Use existing tag names separated with semicolons."
         },
         "failed": "{count} item(s) could not be saved.",
-        "grid_hint": "Click a column header to sort or drag it to reorder columns. Column widths fit their contents; double-click a column divider to refit. Select cells and drag the bottom-right handle to copy values. Range selection and spreadsheet copy and paste are supported.",
+        "grid_hint": "Click a column header to sort or drag it to reorder columns. Column widths fit their contents; double-click a column divider to refit. Select cells and drag the bottom-right handle to copy values. Range selection and copy and paste with Excel or LibreOffice are supported.",
         "load_failed": "Could not load items for bulk editing.",
         "no_items": "No items match these filters.",
         "results": "{total} items",

@@ -16,6 +16,66 @@ export type BulkEditorColumn = {
 export const customFieldKey = (field: EntityFieldDefinition) =>
   `field:${encodeURIComponent(field.name)}:${encodeURIComponent(field.type)}`;
 
+export type ClipboardCell = string | number | boolean | null | undefined;
+
+const clipboardCellText = (value: ClipboardCell) => String(value ?? "").replace(/\r\n?/g, "\n");
+
+export function serializeClipboardGrid(rows: ClipboardCell[][]): string {
+  return rows
+    .map(row =>
+      row
+        .map(value => {
+          const text = clipboardCellText(value);
+          return /["\t\n]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
+        })
+        .join("\t")
+    )
+    .join("\r\n");
+}
+
+const escapeClipboardHtml = (value: ClipboardCell) =>
+  clipboardCellText(value)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("\n", "<br>");
+
+export function serializeClipboardGridHtml(rows: ClipboardCell[][]): string {
+  const body = rows
+    .map(
+      row =>
+        `<tr>${row.map(value => `<td style="white-space: pre-wrap">${escapeClipboardHtml(value)}</td>`).join("")}</tr>`
+    )
+    .join("");
+  return `<table><tbody>${body}</tbody></table>`;
+}
+
+export function combineClipboardGridParts(parts: ClipboardCell[][][]): ClipboardCell[][] {
+  const rowCount = Math.max(0, ...parts.map(rows => rows.length));
+  return Array.from({ length: rowCount }, (_, rowIndex) => parts.flatMap(rows => rows[rowIndex] ?? []));
+}
+
+const clipboardHtmlNodeText = (node: Node): string => {
+  if (node.nodeType === Node.TEXT_NODE) return node.nodeValue ?? "";
+  if (node.nodeName === "BR") return "\n";
+
+  const text = Array.from(node.childNodes).map(clipboardHtmlNodeText).join("");
+  return ["DIV", "LI", "P"].includes(node.nodeName) && text && !text.endsWith("\n") ? `${text}\n` : text;
+};
+
+export function parseClipboardHtmlGrid(input: string): string[][] | null {
+  const fragment = document.createRange().createContextualFragment(input);
+  const table = fragment.querySelector("table");
+  if (!table) return null;
+
+  return Array.from(table.rows).map(row =>
+    Array.from(row.cells).map(cell =>
+      Array.from(cell.childNodes).map(clipboardHtmlNodeText).join("").replace(/\n$/, "").replace(/\r\n?/g, "\n")
+    )
+  );
+}
+
 export function parseClipboardGrid(input: string): string[][] {
   const rows: string[][] = [];
   let row: string[] = [];
@@ -28,9 +88,18 @@ export function parseClipboardGrid(input: string): string[][] {
       if (quoted && input[i + 1] === '"') {
         value += '"';
         i++;
+      } else if (quoted) {
+        quoted = false;
+      } else if (value === "") {
+        quoted = true;
       } else {
-        quoted = !quoted;
+        value += char;
       }
+      continue;
+    }
+    if (quoted && char === "\r") {
+      if (input[i + 1] === "\n") i++;
+      value += "\n";
       continue;
     }
     if (!quoted && char === "\t") {

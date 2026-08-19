@@ -27,8 +27,17 @@
   } from "~/components/ui/pagination";
   import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "~/components/ui/select";
   import { Switch } from "~/components/ui/switch";
-  import { customFieldKey, isDateOnly, parseBoolean } from "~/lib/bulk-edit";
-  import type { BulkEditorColumn } from "~/lib/bulk-edit";
+  import {
+    combineClipboardGridParts,
+    customFieldKey,
+    isDateOnly,
+    parseBoolean,
+    parseClipboardGrid,
+    parseClipboardHtmlGrid,
+    serializeClipboardGrid,
+    serializeClipboardGridHtml,
+  } from "~/lib/bulk-edit";
+  import type { BulkEditorColumn, ClipboardCell } from "~/lib/bulk-edit";
   import { RevoGridMultilineEditor } from "~/lib/revogrid-multiline-editor";
   import type { EntityFieldData, EntityFieldDefinition, EntityOut, EntityPatch } from "~/lib/api/types/data-contracts";
 
@@ -505,6 +514,63 @@
     syncGridModel(detail.model as EditorRow, String(detail.prop));
   };
 
+  type BeforeCopyApplyDetail = {
+    event: DataTransfer;
+    data?: ClipboardCell[][];
+  };
+
+  type BeforePasteApplyDetail = {
+    raw: string;
+    parsed: string[][];
+    dataText: string;
+  };
+
+  type ClipboardRangeCopyDetail = {
+    colType: string;
+    rowType: string;
+    data: ClipboardCell[][];
+  };
+
+  const clipboardDataDimensions = new WeakMap<object, Pick<ClipboardRangeCopyDetail, "colType" | "rowType">>();
+  const clipboardTransferParts = new WeakMap<DataTransfer, Map<string, ClipboardCell[][]>>();
+
+  const onGridClipboardRangeCopy = (event: CustomEvent<ClipboardRangeCopyDetail>) => {
+    clipboardDataDimensions.set(event.detail.data, {
+      colType: event.detail.colType,
+      rowType: event.detail.rowType,
+    });
+  };
+
+  const onGridBeforeCopyApply = (event: CustomEvent<BeforeCopyApplyDetail>) => {
+    const rowsToCopy = event.detail.data ?? [];
+    const dimension = clipboardDataDimensions.get(rowsToCopy);
+    const containsCells = rowsToCopy.some(row => row.length > 0);
+    if (!containsCells) {
+      event.preventDefault();
+      return;
+    }
+
+    let combinedRows = rowsToCopy;
+    if (dimension?.rowType === "rgRow") {
+      const parts = clipboardTransferParts.get(event.detail.event) ?? new Map<string, ClipboardCell[][]>();
+      parts.set(dimension.colType, rowsToCopy);
+      clipboardTransferParts.set(event.detail.event, parts);
+      combinedRows = combineClipboardGridParts(
+        ["colPinStart", "rgCol", "colPinEnd"].flatMap(colType => (parts.has(colType) ? [parts.get(colType)!] : []))
+      );
+    }
+
+    event.detail.event.setData("text/plain", serializeClipboardGrid(combinedRows));
+    event.detail.event.setData("text/html", serializeClipboardGridHtml(combinedRows));
+    event.preventDefault();
+  };
+
+  const onGridBeforePasteApply = (event: CustomEvent<BeforePasteApplyDetail>) => {
+    const containsHtmlTable = /<table(?:\s|>)/i.test(event.detail.raw);
+    const htmlRows = containsHtmlTable ? parseClipboardHtmlGrid(event.detail.raw) : null;
+    event.detail.parsed = htmlRows ?? parseClipboardGrid(event.detail.dataText || event.detail.raw);
+  };
+
   const onColumnDragEnd = (event: CustomEvent<ColumnDragEventData>) => {
     if (event.detail.type !== "rgCol" || event.detail.columns.length === 0) return;
 
@@ -656,6 +722,9 @@
         v-else
         data-testid="bulk-edit-grid"
         class="h-full min-h-0 overflow-hidden overscroll-contain rounded-md"
+        @beforecopyapply="onGridBeforeCopyApply"
+        @beforepasteapply="onGridBeforePasteApply"
+        @clipboardrangecopy="onGridClipboardRangeCopy"
         @columndragend="onColumnDragEnd"
         @wheel.capture="onGridWheel"
       >
